@@ -290,6 +290,8 @@ export const GALLERY_TEXT = {
   "st.fileReuploading": { zh: "重新上传…", en: "Re-uploading…", ja: "再アップロード中…" },
   "st.folderCreating": { zh: "新建文件夹…", en: "Creating folder…", ja: "フォルダ作成中…" },
   "st.folderDeleting": { zh: "删除文件夹…", en: "Deleting folder…", ja: "フォルダ削除中…" },
+  // tLatin() 引用的 key（机器抄漏 → 手补 2026-09-10）
+  "cf.cloudOfflineTitle": { zh: "云端：离线（无法登录 / 同步；本地图库正常）", en: "Cloud: offline (cannot sign in / sync; local gallery works normally)", ja: "クラウド：オフライン（ログイン / 同期不可；ローカルギャラリーは正常）" },
 } as const satisfies Record<string, Partial<Record<GalleryLang, string>>>;
 export type GalleryTextKey = keyof typeof GALLERY_TEXT;
 export type GalleryT = (key: GalleryTextKey, params?: Record<string, string | number>) => string;

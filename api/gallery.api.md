@@ -62,6 +62,40 @@ export interface BackupFileRef {
 }
 
 // @public (undocumented)
+export interface BackupFlowPorts {
+    // (undocumented)
+    appName?: string;
+    // (undocumented)
+    busy<T>(label: string, fn: () => Promise<T>): Promise<T>;
+    // (undocumented)
+    confirm(title: string, message: string): Promise<boolean>;
+    // (undocumented)
+    deliver(blob: Blob, filename: string): void;
+    // (undocumented)
+    isCached(syncState: string): boolean;
+    // (undocumented)
+    pack(entries: {
+        path: string;
+        data: Blob;
+    }[]): Promise<Blob>;
+    // (undocumented)
+    readFile(path: string): {
+        getEncryptedBlob(): Promise<Blob | null>;
+        isEncrypted(): Promise<boolean>;
+        open(): Promise<Blob | null>;
+        offload(): Promise<unknown>;
+    };
+    // (undocumented)
+    reportError(e: unknown, level: "warning" | "error" | "log"): void;
+    // (undocumented)
+    setBusyText(msg: string): void;
+    // (undocumented)
+    status(msg: string, isError?: boolean): void;
+    // (undocumented)
+    watchFolder: WatchFolderFn;
+}
+
+// @public (undocumented)
 export interface BackupPorts {
     deliver(blob: Blob, filename: string): void;
     onError?(path: string, err: unknown): void;
@@ -134,6 +168,66 @@ export interface ChangePasswordDeps {
 }
 
 // @public (undocumented)
+export function changePasswordFlow(p: ChangePasswordPorts): Promise<void>;
+
+// @public (undocumented)
+export interface ChangePasswordPorts {
+    // (undocumented)
+    busy<T>(label: string, fn: () => Promise<T>): Promise<T>;
+    // (undocumented)
+    checkVerifier(pw: string): Promise<"ok" | "bad" | "none">;
+    // (undocumented)
+    confirm(title: string, message: string): Promise<boolean>;
+    // (undocumented)
+    createVerifier(pw: string): Promise<void>;
+    // (undocumented)
+    file(fullName: string): {
+        isEncrypted(): Promise<boolean>;
+        rekey(o: {
+            newPassword: string;
+            isOnline: () => boolean;
+        }): Promise<{
+            status: string;
+        }>;
+    };
+    // (undocumented)
+    flow<T>(fn: () => Promise<T>): Promise<T>;
+    // (undocumented)
+    forgetFilePassword(name: string): void;
+    // (undocumented)
+    hasVerifier(): boolean;
+    // (undocumented)
+    invalidateEncrypted(bareName: string): void;
+    // (undocumented)
+    invalidateThumb(bareName: string): Promise<void>;
+    // (undocumented)
+    isCached(syncState: string): boolean;
+    // (undocumented)
+    isOnline(): boolean;
+    // (undocumented)
+    naming?: NameBoundary;
+    // (undocumented)
+    promptPassword(o: {
+        title: string;
+        message: string;
+    }): Promise<string | null>;
+    // (undocumented)
+    refresh(): void;
+    // (undocumented)
+    reportError(e: unknown, level: "log"): void;
+    // (undocumented)
+    setBusyText(msg: string): void;
+    // (undocumented)
+    setFilePassword(name: string, pw: string): void;
+    // (undocumented)
+    setPassword(pw: string): void;
+    // (undocumented)
+    status(msg: string, isError?: boolean): void;
+    // (undocumented)
+    watchFolder: WatchFolderFn;
+}
+
+// @public (undocumented)
 export interface ChangePasswordReport {
     // (undocumented)
     kept: {
@@ -146,6 +240,34 @@ export interface ChangePasswordReport {
 
 // @public (undocumented)
 function clear(): void;
+
+// @public (undocumented)
+export function closeGalleryFlow(p: GalleryOpenPorts): Promise<void>;
+
+// @public (undocumented)
+export interface CloudAuthChipEls {
+    // (undocumented)
+    accountInfo: HTMLElement;
+    // (undocumented)
+    iconBtn: HTMLElement;
+    // (undocumented)
+    refreshBtn: HTMLElement;
+}
+
+// @public (undocumented)
+export interface CloudAuthPort {
+    // (undocumented)
+    activeAccount(): {
+        username?: string;
+        name?: string;
+    } | null;
+    // (undocumented)
+    isAuthConfigured(): boolean;
+    // (undocumented)
+    isSignedIn(): boolean;
+    // (undocumented)
+    retrySilentSignIn(): Promise<unknown>;
+}
 
 // @public (undocumented)
 export interface CloudFile {
@@ -228,6 +350,9 @@ export function createFrameGate<T>(apply: (frame: T) => void, opts?: {
 }): FrameGate<T>;
 
 // @public (undocumented)
+export function createGallery(el: HTMLElement, deps: CreateGalleryDeps): Gallery;
+
+// @public (undocumented)
 export function createGalleryAttachment(deps: AttachmentDeps): GalleryAttachment;
 
 // @public
@@ -253,6 +378,29 @@ export function createGalleryDataFace(deps: {
     openCloudImage: (path: string) => Promise<Blob | null>;
     listTrash: () => Promise<TrashGItem[]>;
 };
+
+// @public (undocumented)
+export interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thumbs" | "store"> {
+    // (undocumented)
+    deviceKv?: DeviceKv;
+    // (undocumented)
+    policy: DataFacePolicy & {
+        naming?: NameBoundary;
+        thumbs?: {
+            fetch: (name: string, source: ThumbSource) => Promise<Blob>;
+            store?: ThumbStore;
+            dbName?: string;
+            galleryId?: () => string;
+        };
+    };
+    // (undocumented)
+    store: () => (VerbStore & DataFaceStore) | null;
+    // (undocumented)
+    text?: {
+        t?: (key: GalleryTextKey, params?: Record<string, string | number>) => string | null | undefined;
+        lang?: GalleryLang;
+    };
+}
 
 // @public (undocumented)
 export function createGalleryRegistry(kv: RegistryKV): GalleryRegistry;
@@ -289,6 +437,9 @@ export function createGalleryVerbs(d: VerbDeps): {
     unlock: (name: string) => Promise<boolean>;
     whereLabel: (where: "local" | "cloud") => string;
 };
+
+// @public
+export function createQuotaWarner(status: (msg: string, isError?: boolean) => void): () => Promise<boolean>;
 
 // @public (undocumented)
 export function createThumbCache(deps: ThumbCacheDeps): ThumbCache;
@@ -468,6 +619,16 @@ export interface FrameGateTimers {
     clear(handle: unknown): void;
     // (undocumented)
     set(fn: () => void, ms: number): unknown;
+}
+
+// @public (undocumented)
+export interface Gallery {
+    // (undocumented)
+    data: ReturnType<typeof createGalleryDataFace>;
+    // (undocumented)
+    handle: GalleryHandle;
+    // (undocumented)
+    thumbs: ThumbCache | null;
 }
 
 // @public
@@ -1907,6 +2068,11 @@ export const GALLERY_TEXT: {
         readonly en: "Deleting folder…";
         readonly ja: "フォルダ削除中…";
     };
+    readonly "cf.cloudOfflineTitle": {
+        readonly zh: "云端：离线（无法登录 / 同步；本地图库正常）";
+        readonly en: "Cloud: offline (cannot sign in / sync; local gallery works normally)";
+        readonly ja: "クラウド：オフライン（ログイン / 同期不可；ローカルギャラリーは正常）";
+    };
 };
 
 // @public (undocumented)
@@ -2026,6 +2192,26 @@ export type GalleryKind = "onedrive" | "folder";
 
 // @public (undocumented)
 export type GalleryLang = "zh" | "en" | "ja";
+
+// @public (undocumented)
+export interface GalleryOpenPorts {
+    // (undocumented)
+    applyPendingTransient?(): void;
+    // (undocumented)
+    awaitCloudPushIdle(): Promise<void>;
+    // (undocumented)
+    hasGallery(): boolean;
+    // (undocumented)
+    isDirty(): boolean;
+    // (undocumented)
+    onClosed?(): void;
+    // (undocumented)
+    saveImplicit(): Promise<void>;
+    // (undocumented)
+    setMode(open: boolean): void;
+    // (undocumented)
+    status(msg: string, isError?: boolean): void;
+}
 
 // @public (undocumented)
 export interface GalleryRegistry {
@@ -2188,6 +2374,24 @@ export function idbThumbStore(opts: {
     version?: number;
 }): ThumbStore;
 
+// @public (undocumented)
+export interface IdbUsageReport {
+    // (undocumented)
+    label: string;
+    // (undocumented)
+    level: "ok" | "warn" | "critical";
+    // (undocumented)
+    title?: string;
+}
+
+// @public (undocumented)
+export function idbUsageReport(files: {
+    usage(): Promise<{
+        bytes: number;
+        count: number;
+    }>;
+}, reportError?: (e: unknown, level: "warning") => void): Promise<IdbUsageReport | null>;
+
 // @public
 export const imageBasename: (p: string) => string;
 
@@ -2274,6 +2478,11 @@ export function nextFreeExportName(base: string, ext: string, isOccupied: (name:
 function note(tag: string, msg: string): void;
 
 // @public (undocumented)
+export function openGalleryFlow(p: GalleryOpenPorts, screen: {
+    setView(v: "files" | "trash"): void;
+}, after?: () => void): Promise<void>;
+
+// @public (undocumented)
 export const ORA_THUMB_PATH = "Thumbnails/thumbnail.png";
 
 // @public (undocumented)
@@ -2313,6 +2522,14 @@ export interface RegistryKV {
 
 // @public (undocumented)
 export const REKEY_OK: ReadonlySet<string>;
+
+// @public (undocumented)
+export function renderCloudAuthChip(els: CloudAuthChipEls, auth: CloudAuthPort, icons: {
+    out: string;
+    in: string;
+}, opts?: {
+    latin?: (key: "cf.cloudOfflineTitle") => string;
+}): void;
 
 // @public (undocumented)
 export function restoreLastSession(p: RestorePorts): Promise<RestoreOutcome>;
@@ -2362,6 +2579,9 @@ export interface ResumeSlate {
 
 // @public (undocumented)
 export function runChangePassword(d: ChangePasswordDeps): Promise<ChangePasswordReport>;
+
+// @public (undocumented)
+export function runFullLibraryBackupFlow(p: BackupFlowPorts): Promise<void>;
 
 // @public
 export function runLibraryBackup(files: BackupFileRef[], ports: BackupPorts, opts?: {
@@ -2784,6 +3004,9 @@ export function wireCapabilityBroadcast(win: {
     addEventListener: Window["addEventListener"];
     dispatchEvent: Window["dispatchEvent"];
 }): void;
+
+// @public (undocumented)
+export function wireCloudAuthRefresh(els: Pick<CloudAuthChipEls, "refreshBtn">, auth: CloudAuthPort, after: () => void): void;
 
 // (No @packageDocumentation comment for this package)
 

@@ -27,3 +27,6 @@ export * from "./core/thumbs/thumb-cache.ts";
 export * from "./core/thumbs/peek-thumb.ts";
 export * from "./ui/store-ui.ts";
 export * from "./ui/gallery-screen.ts";
+export * from "./ui/shell-flows.ts";
+export * from "./ui/cloud-auth-chip.ts";
+export * from "./create-gallery.ts";

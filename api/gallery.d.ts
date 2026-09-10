@@ -41,6 +41,28 @@ export declare interface BackupFileRef {
     syncState?: string;
 }
 
+export declare interface BackupFlowPorts {
+    watchFolder: WatchFolderFn;
+    readFile(path: string): {
+        getEncryptedBlob(): Promise<Blob | null>;
+        isEncrypted(): Promise<boolean>;
+        open(): Promise<Blob | null>;
+        offload(): Promise<unknown>;
+    };
+    isCached(syncState: string): boolean;
+    pack(entries: {
+        path: string;
+        data: Blob;
+    }[]): Promise<Blob>;
+    deliver(blob: Blob, filename: string): void;
+    confirm(title: string, message: string): Promise<boolean>;
+    busy<T>(label: string, fn: () => Promise<T>): Promise<T>;
+    setBusyText(msg: string): void;
+    status(msg: string, isError?: boolean): void;
+    reportError(e: unknown, level: "warning" | "error" | "log"): void;
+    appName?: string;
+}
+
 export declare interface BackupPorts {
     /** 取一件的 at-rest 字节（加密件应给密文；拿不到 → null，进失败清单）。 */
     readBytes(path: string): Promise<Blob | null>;
@@ -95,6 +117,43 @@ export declare interface ChangePasswordDeps {
     onError?: (name: string, e: unknown) => void;
 }
 
+export declare function changePasswordFlow(p: ChangePasswordPorts): Promise<void>;
+
+export declare interface ChangePasswordPorts {
+    hasVerifier(): boolean;
+    checkVerifier(pw: string): Promise<"ok" | "bad" | "none">;
+    createVerifier(pw: string): Promise<void>;
+    promptPassword(o: {
+        title: string;
+        message: string;
+    }): Promise<string | null>;
+    setPassword(pw: string): void;
+    setFilePassword(name: string, pw: string): void;
+    forgetFilePassword(name: string): void;
+    confirm(title: string, message: string): Promise<boolean>;
+    flow<T>(fn: () => Promise<T>): Promise<T>;
+    busy<T>(label: string, fn: () => Promise<T>): Promise<T>;
+    setBusyText(msg: string): void;
+    watchFolder: WatchFolderFn;
+    isCached(syncState: string): boolean;
+    file(fullName: string): {
+        isEncrypted(): Promise<boolean>;
+        rekey(o: {
+            newPassword: string;
+            isOnline: () => boolean;
+        }): Promise<{
+            status: string;
+        }>;
+    };
+    isOnline(): boolean;
+    naming?: NameBoundary;
+    invalidateThumb(bareName: string): Promise<void>;
+    invalidateEncrypted(bareName: string): void;
+    refresh(): void;
+    status(msg: string, isError?: boolean): void;
+    reportError(e: unknown, level: "log"): void;
+}
+
 export declare interface ChangePasswordReport {
     moved: string[];
     kept: {
@@ -104,6 +163,24 @@ export declare interface ChangePasswordReport {
 }
 
 declare function clear(): void;
+
+export declare function closeGalleryFlow(p: GalleryOpenPorts): Promise<void>;
+
+export declare interface CloudAuthChipEls {
+    iconBtn: HTMLElement;
+    accountInfo: HTMLElement;
+    refreshBtn: HTMLElement;
+}
+
+export declare interface CloudAuthPort {
+    isSignedIn(): boolean;
+    isAuthConfigured(): boolean;
+    activeAccount(): {
+        username?: string;
+        name?: string;
+    } | null;
+    retrySilentSignIn(): Promise<unknown>;
+}
 
 export declare interface CloudFile {
     path: string;
@@ -164,6 +241,8 @@ export declare function createFrameGate<T>(apply: (frame: T) => void, opts?: {
     timers?: FrameGateTimers;
 }): FrameGate<T>;
 
+export declare function createGallery(el: HTMLElement, deps: CreateGalleryDeps): Gallery;
+
 export declare function createGalleryAttachment(deps: AttachmentDeps): GalleryAttachment;
 
 /** 当前库「在线可推」谓词（0828 bug 修：folder 挂着仍显无云——isSignedIn 是 MSAL 词，folder 库别问它）。
@@ -192,6 +271,25 @@ export declare function createGalleryDataFace(deps: {
     /** 回收站：store 两端聚合的 TrashItem[] → TrashGItem（只元数据，无 blob）。 */
     listTrash: () => Promise<TrashGItem[]>;
 };
+
+export declare interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thumbs" | "store"> {
+    store: () => (VerbStore & DataFaceStore) | null;
+    policy: DataFacePolicy & {
+        naming?: NameBoundary;
+        /** 缩略图：不给 = 无缩略图（WXHW 2.0）。peek 从 store getPeek 读 app 域 entry（WeebPaint: Thumbnails/thumbnail.png）。 */
+        thumbs?: {
+            fetch: (name: string, source: ThumbSource) => Promise<Blob>;
+            store?: ThumbStore;
+            dbName?: string;
+            galleryId?: () => string;
+        };
+    };
+    text?: {
+        t?: (key: GalleryTextKey, params?: Record<string, string | number>) => string | null | undefined;
+        lang?: GalleryLang;
+    };
+    deviceKv?: DeviceKv;
+}
 
 export declare function createGalleryRegistry(kv: RegistryKV): GalleryRegistry;
 
@@ -226,6 +324,9 @@ export declare function createGalleryVerbs(d: VerbDeps): {
     unlock: (name: string) => Promise<boolean>;
     whereLabel: (where: "local" | "cloud") => string;
 };
+
+/** 配额告警（只在档位变化时说一次）。返回本次是否发了告警。 */
+export declare function createQuotaWarner(status: (msg: string, isError?: boolean) => void): () => Promise<boolean>;
 
 export declare function createThumbCache(deps: ThumbCacheDeps): ThumbCache;
 
@@ -360,6 +461,12 @@ export declare interface FrameGate<T> {
 export declare interface FrameGateTimers {
     set(fn: () => void, ms: number): unknown;
     clear(handle: unknown): void;
+}
+
+export declare interface Gallery {
+    handle: GalleryHandle;
+    data: ReturnType<typeof createGalleryDataFace>;
+    thumbs: ThumbCache | null;
 }
 
 /** 能力变更广播（window 事件；消费方自己重读 hasGallery()）。P3 起由换库事件驱动。 */
@@ -1797,6 +1904,11 @@ export declare const GALLERY_TEXT: {
         readonly en: "Deleting folder…";
         readonly ja: "フォルダ削除中…";
     };
+    readonly "cf.cloudOfflineTitle": {
+        readonly zh: "云端：离线（无法登录 / 同步；本地图库正常）";
+        readonly en: "Cloud: offline (cannot sign in / sync; local gallery works normally)";
+        readonly ja: "クラウド：オフライン（ログイン / 同期不可；ローカルギャラリーは正常）";
+    };
 };
 
 export declare interface GalleryAttachment {
@@ -1884,6 +1996,17 @@ export declare function galleryItemFromStoreItem(it: Item, naming?: NameBoundary
 export declare type GalleryKind = "onedrive" | "folder";
 
 export declare type GalleryLang = "zh" | "en" | "ja";
+
+export declare interface GalleryOpenPorts {
+    hasGallery(): boolean;
+    applyPendingTransient?(): void;
+    isDirty(): boolean;
+    saveImplicit(): Promise<void>;
+    awaitCloudPushIdle(): Promise<void>;
+    setMode(open: boolean): void;
+    onClosed?(): void;
+    status(msg: string, isError?: boolean): void;
+}
 
 export declare interface GalleryRegistry {
     list(): Promise<GalleryEntry[]>;
@@ -1993,6 +2116,19 @@ export declare function idbThumbStore(opts: {
     version?: number;
 }): ThumbStore;
 
+export declare interface IdbUsageReport {
+    label: string;
+    level: "ok" | "warn" | "critical";
+    title?: string;
+}
+
+export declare function idbUsageReport(files: {
+    usage(): Promise<{
+        bytes: number;
+        count: number;
+    }>;
+}, reportError?: (e: unknown, level: "warning") => void): Promise<IdbUsageReport | null>;
+
 /** path → basename（picker 显示名；File 包装名 =「有名保名」命名规范的上游）。 */
 export declare const imageBasename: (p: string) => string;
 
@@ -2059,6 +2195,10 @@ export declare function nextFreeExportName(base: string, ext: string, isOccupied
 /** 面包屑（非错误的时间线事件）。tag 短词：boot / auth / gallery / page / net。 */
 declare function note(tag: string, msg: string): void;
 
+export declare function openGalleryFlow(p: GalleryOpenPorts, screen: {
+    setView(v: "files" | "trash"): void;
+}, after?: () => void): Promise<void>;
+
 export declare const ORA_THUMB_PATH = "Thumbnails/thumbnail.png";
 
 export declare function pathBasename(name: string): string;
@@ -2088,6 +2228,13 @@ export declare interface RegistryKV {
 }
 
 export declare const REKEY_OK: ReadonlySet<string>;
+
+export declare function renderCloudAuthChip(els: CloudAuthChipEls, auth: CloudAuthPort, icons: {
+    out: string;
+    in: string;
+}, opts?: {
+    latin?: (key: "cf.cloudOfflineTitle") => string;
+}): void;
 
 export declare function restoreLastSession(p: RestorePorts): Promise<RestoreOutcome>;
 
@@ -2148,6 +2295,8 @@ export declare interface ResumeSlate {
 }
 
 export declare function runChangePassword(d: ChangePasswordDeps): Promise<ChangePasswordReport>;
+
+export declare function runFullLibraryBackupFlow(p: BackupFlowPorts): Promise<void>;
 
 /** 逐件取字节 → 进包或溢出下载 → 最后封包交付。整个过程只读。 */
 export declare function runLibraryBackup(files: BackupFileRef[], ports: BackupPorts, opts?: {
@@ -2469,5 +2618,7 @@ export declare function wireCapabilityBroadcast(win: {
     addEventListener: Window["addEventListener"];
     dispatchEvent: Window["dispatchEvent"];
 }): void;
+
+export declare function wireCloudAuthRefresh(els: Pick<CloudAuthChipEls, "refreshBtn">, auth: CloudAuthPort, after: () => void): void;
 
 export { }

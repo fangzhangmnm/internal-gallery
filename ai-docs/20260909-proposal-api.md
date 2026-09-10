@@ -105,6 +105,13 @@ export interface GalleryPolicy {
 | `src/gallery/` 「检疫院不分层」 | 扔 | — | 包内 core/ 与 ui/ 分层，build lint：core 禁 import DOM、ui 禁 import 宿主 |
 | WXHW `drawer.ts` / `docs.ts` / 一层夹 / `float`→local-only 映射 | 扔 | — | WXHW 2.0 消费本包（ADR-0011） |
 
+### 3.1 实现中回写（2026-09-10，委托下的 0.1 决定）
+
+- **shell / manage-ui / cloud-auth-ui 的 chrome 标记留宿主**：它们操作的是 `index.html` 里的按钮 / 弹层 / 底栏 / 新建 sheet，包不发明标记（发明 = 重写宿主 UI）。包出的是 **headless 流**：`openGalleryFlow / closeGalleryFlow`（存脏 + 等推云 + 模式切换经端口）、`idbUsageReport`（8s 超时）、`createQuotaWarner`、`runFullLibraryBackupFlow`、`changePasswordFlow`（`ui/shell-flows.ts`），以及 `renderCloudAuthChip / wireCloudAuthRefresh`（宿主传三个元素）。库管理面（连接 / 切换 / 卸下 + WeebPaint 的笔架播种）整个留宿主，核心器官（registry / attachment / capability / connect）已在 core/library。
+- **总装 `createGallery(el, deps)`**：configureText / configureDeviceKv → data-face → thumb cache（IDB 或注入）→ `mountGalleryScreen`。返回 `{ handle, data, thumbs }`。
+- **CSS 进包**：`./gallery.css` 门牌（`.gallery-*` 规则 WET 自 WeebPaint styles.css）；token 由宿主 `:root`。
+- **Vue 屏没有 node 测试**（需要 DOM + Vue），靠 WeebPaint 收货当集成测试；core 与 verbs 有 153 条。
+
 ## 4. 政策默认（进包当行为，来源 = WeebPaint 现状）
 
 只订阅当前一层、永不 list 全库；移动只给「上级 + 可见子夹」，无树选择器；`sync.pushing` / `file.renaming` 走通知条不上全屏蒙版；不可打开的杂物文件照样显示；删除 / 改名失败文案落在重开的对话框；排序 natural 降序；文件夹永远嵌套；新建默认名由 `policy.defaultNewName`，改名自由文本；`ghost` 与 `pendingGone` 图标必须可区分；徽章 9 值。
