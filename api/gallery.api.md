@@ -2465,6 +2465,8 @@ export interface NameBoundary {
     // (undocumented)
     bare: (s: string) => string;
     // (undocumented)
+    display?: (bare: string) => string;
+    // (undocumented)
     full: (bare: string) => string;
 }
 

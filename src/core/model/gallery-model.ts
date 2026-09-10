@@ -8,7 +8,7 @@
 import { t } from "../text.ts";
 
 /** 裸名 ↔ 库全名的边界（WeebPaint：`X` ↔ `X.ora`；身份=全名的 app 传恒等/不传）。 */
-export interface NameBoundary { bare: (s: string) => string; full: (bare: string) => string; }
+export interface NameBoundary { bare: (s: string) => string; full: (bare: string) => string; /** 只管显示（tile 标题）：身份=全名的 app 用它去扩展名；不给 = 显示 basename。 */ display?: (bare: string) => string; }
 const IDENTITY: NameBoundary = { bare: (s) => s, full: (b) => b };
 
 export interface LocalSession { name: string; updatedAt?: number; }
