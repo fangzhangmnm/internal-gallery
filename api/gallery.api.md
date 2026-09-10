@@ -2277,6 +2277,7 @@ export interface GalleryScreenDeps {
             size?: number;
             cls?: string;
         }) => string;
+        tilePlaceholderHtml?: (name: string) => string | undefined;
     };
     // (undocumented)
     vue: VueRuntime;

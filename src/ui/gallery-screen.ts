@@ -47,7 +47,11 @@ export interface GalleryScreenDeps {
   data: GalleryDataFace;
   doc: GalleryDocHost;
   host: VerbHost;
-  ui: { iconHtml: (name: string, opts?: { size?: number; cls?: string }) => string };
+  ui: {
+    iconHtml: (name: string, opts?: { size?: number; cls?: string }) => string;
+    /** 0.1.2：无缩略图时卡片占位内容（HTML，通常是一枚图标）。不给 → 退回名字首字（WeebPaint 默认；WXHW 2026-09-10 user「所有的预览图都是 2……不要从名字生成」→ 宿主给 book/file 图标）。 */
+    tilePlaceholderHtml?: (name: string) => string | undefined;
+  };
   naming?: NameBoundary;
   isZipDoc?: (fullName: string) => boolean;
   thumbs?: ThumbCache;
@@ -90,6 +94,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
   const { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick } = d.vue;
   const naming = d.naming ?? IDENTITY;
   const icon = d.ui.iconHtml;
+  const phHtml = (name: string): string => d.ui.tilePlaceholderHtml?.(name) ?? "";   // 0.1.2：宿主给的占位图标；空 = 退回名字首字
   const ICON = {
     localOnly: icon("database"), cloudOnly: icon("cloud"), syncedBoth: icon("cloud-synced"), dirtyBoth: icon("cloud-upload"),
     float: icon("cloud-upload"), folder: icon("folder"), cloudBig: icon("cloud"),
@@ -105,9 +110,9 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
 
   const ThumbCell = defineComponent({
     name: "ThumbCell",
-    props: { localThumb: { default: null }, encName: { type: String, default: null }, cloud: { default: null }, fetchable: { type: Boolean, default: false }, isCloud: { type: Boolean, default: false }, cloudNewer: { type: Boolean, default: false }, thumbToken: { type: String, default: "" }, fallback: { type: String, default: "?" }, alt: { type: String, default: "" } },
+    props: { localThumb: { default: null }, encName: { type: String, default: null }, cloud: { default: null }, fetchable: { type: Boolean, default: false }, isCloud: { type: Boolean, default: false }, cloudNewer: { type: Boolean, default: false }, thumbToken: { type: String, default: "" }, fallback: { type: String, default: "?" }, fallbackHtml: { type: String, default: "" }, alt: { type: String, default: "" } },
     emits: ["unlock"],
-    setup(props: { localThumb: Blob | null; encName: string | null; cloud: CloudFileMeta | null; fetchable: boolean; isCloud: boolean; cloudNewer: boolean; thumbToken: string; fallback: string; alt: string }) {
+    setup(props: { localThumb: Blob | null; encName: string | null; cloud: CloudFileMeta | null; fetchable: boolean; isCloud: boolean; cloudNewer: boolean; thumbToken: string; fallback: string; fallbackHtml: string; alt: string }) {
       const url = ref<string | null>(null), showCloud = ref(false), locked = ref(false), root = ref<HTMLElement | null>(null);
       let cloudEncBlob: Blob | null = null, objUrl: string | null = null, obs: IntersectionObserver | null = null;
       const setBlob = (blob: Blob) => { if (objUrl) URL.revokeObjectURL(objUrl); objUrl = URL.createObjectURL(blob); url.value = objUrl; };
@@ -154,6 +159,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
     </div>
     <div v-else class="gallery-tile-thumb placeholder" ref="root">
       <span v-if="showCloud" style="width:48px;height:48px;display:inline-block" v-html="ICON.cloudBig"></span>
+      <span v-else-if="fallbackHtml" class="gallery-tile-ph-icon" v-html="fallbackHtml"></span>
       <template v-else>{{ fallback }}</template>
     </div>`,
   });
@@ -337,7 +343,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         retry: t("gal.retry"), openDiag: t("gal.openDiag"), reload: t("gal.reload"),
       };
       return {
-        view, folder, loading, stalled, retry, openDiag, reloadApp, openMenu, isEmpty, emptyText, L,
+        view, folder, loading, stalled, retry, openDiag, reloadApp, openMenu, isEmpty, emptyText, L, phHtml,
         folderTiles, fileTiles, imageTiles, otherTiles, trashTiles, crumbs,
         badgeIcon, fmtMeta, ICON, toggleMenu, menuUp, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
         openTile, openImageTile, deleteImage, rename, move, copy, push, reupload, unload, del, folderDelete, trashRestore, trashPurge, emptyTrash,
@@ -394,7 +400,7 @@ const GALLERY_TEMPLATE = `
           </div>
 
           <div v-for="row in fileTiles" :key="row.t.name" class="gallery-tile" :class="{ active: row.t.isActive }" @click="openTile(row.item)">
-            <ThumbCell :local-thumb="row.t.hasLocalThumb ? row.item.local.thumb : null" :enc-name="row.t.encrypted ? row.t.name : null" :fetchable="!row.t.encrypted && (!!row.t.cloud || !!row.item.local)" :is-cloud="!row.item.local && !!row.t.cloud" :cloud-newer="!!row.item.cloudNewer" :thumb-token="String(row.item.local ? (row.item.local.updatedAt||0) : (row.t.cloud && row.t.cloud.lastModifiedDateTime || row.t.size || 0))" :fallback="row.t.displayName.slice(0,1) || '?'" :alt="row.t.name" @unlock="onUnlock" />
+            <ThumbCell :local-thumb="row.t.hasLocalThumb ? row.item.local.thumb : null" :enc-name="row.t.encrypted ? row.t.name : null" :fetchable="!row.t.encrypted && (!!row.t.cloud || !!row.item.local)" :is-cloud="!row.item.local && !!row.t.cloud" :cloud-newer="!!row.item.cloudNewer" :thumb-token="String(row.item.local ? (row.item.local.updatedAt||0) : (row.t.cloud && row.t.cloud.lastModifiedDateTime || row.t.size || 0))" :fallback="row.t.displayName.slice(0,1) || '?'" :fallback-html="phHtml(row.t.name)" :alt="row.t.name" @unlock="onUnlock" />
             <div class="gallery-tile-name-row">
               <div class="gallery-tile-name" :title="row.t.fullPath">{{ row.t.displayName }}</div>
               <div class="gallery-tile-meta">
@@ -457,7 +463,7 @@ const GALLERY_TEMPLATE = `
 
         <template v-if="view==='trash' && !loading">
           <div v-for="row in trashTiles" :key="row.t.name + row.t.deletedAt" class="gallery-tile">
-            <ThumbCell :local-thumb="row.t.hasLocalThumb ? row.item.local.thumb : null" :fetchable="!row.t.encrypted && (!!row.t.cloud || !!row.item.local)" :is-cloud="!row.item.local && !!row.t.cloud" :thumb-token="String(row.item.local ? (row.item.local.updatedAt||0) : (row.t.cloud && row.t.cloud.lastModifiedDateTime || row.t.size || 0))" :fallback="row.t.name.slice(0,1) || '?'" :alt="row.t.name" />
+            <ThumbCell :local-thumb="row.t.hasLocalThumb ? row.item.local.thumb : null" :fetchable="!row.t.encrypted && (!!row.t.cloud || !!row.item.local)" :is-cloud="!row.item.local && !!row.t.cloud" :thumb-token="String(row.item.local ? (row.item.local.updatedAt||0) : (row.t.cloud && row.t.cloud.lastModifiedDateTime || row.t.size || 0))" :fallback="row.t.name.slice(0,1) || '?'" :fallback-html="phHtml(row.t.name)" :alt="row.t.name" />
             <div class="gallery-tile-name-row">
               <div class="gallery-tile-name" :title="row.t.name">{{ row.t.name }}</div>
               <div class="gallery-tile-meta">{{ row.t.source }} · {{ fmtMeta({time: row.t.deletedAt, size: 0}).split(' · ')[0] }} {{ L.deleted }}</div>

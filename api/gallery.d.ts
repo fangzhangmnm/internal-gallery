@@ -2040,6 +2040,8 @@ export declare interface GalleryScreenDeps {
             size?: number;
             cls?: string;
         }) => string;
+        /** 0.1.2：无缩略图时卡片占位内容（HTML，通常是一枚图标）。不给 → 退回名字首字（WeebPaint 默认；WXHW 2026-09-10 user「所有的预览图都是 2……不要从名字生成」→ 宿主给 book/file 图标）。 */
+        tilePlaceholderHtml?: (name: string) => string | undefined;
     };
     naming?: NameBoundary;
     isZipDoc?: (fullName: string) => boolean;
