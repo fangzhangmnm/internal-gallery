@@ -1,4 +1,17 @@
-// @internal/gallery 测试入口（runner 抄 internal-store：零依赖、实时耗时、每测 10s 超时墙）。
+// @internal/gallery 测试入口（runner 抄 internal-store）。
 import { run } from "./runner.mjs";
+import "./setup.mjs";
 import "./birth.test.mjs";
+import "./gallery-model.test.mjs";
+import "./gallery-view-model.test.mjs";
+import "./cloud-image-model.test.mjs";
+import "./first-frame-watchdog.test.ts";
+import "./frame-gate.test.ts";
+import "./diag-log.test.mjs";
+import "./gallery-registry.test.mjs";
+import "./gallery-attachment.test.mjs";
+import "./resume-slate.test.mjs";
+import "./boot-restore.test.ts";
+import "./library-backup.test.mjs";
+import "./change-password.test.mjs";
 run();

@@ -5,7 +5,797 @@
 ```ts
 
 // @public (undocumented)
+export function activeGalleryId(): string;
+
+// @public (undocumented)
+export interface AttachmentDeps {
+    // (undocumented)
+    buildStore: (entry: GalleryEntry) => SwappableStore;
+    // (undocumented)
+    hasOpenGalleryDoc: () => boolean;
+    // (undocumented)
+    registry: Pick<GalleryRegistry, "touch" | "relabel" | "clearLastActive">;
+    // (undocumented)
+    reportError: (e: unknown) => void;
+    // (undocumented)
+    requestPersist: () => void;
+    // (undocumented)
+    setActiveGalleryId: (id: string | null) => void;
+    // (undocumented)
+    storeAbsent: boolean;
+    // (undocumented)
+    swap: (next: SwappableStore | null) => Promise<void>;
+}
+
+// @public (undocumented)
+export type AttachmentState = {
+    kind: "detached";
+} | {
+    kind: "attached";
+    entry: GalleryEntry;
+    online: boolean;
+};
+
+// @public
+export const BACKUP_BUDGET_BYTES: number;
+
+// @public
+export const backupArchiveName: (now?: Date) => string;
+
+// @public
+export interface BackupFileRef {
+    // (undocumented)
+    path: string;
+    // (undocumented)
+    size?: number;
+    // (undocumented)
+    syncState?: string;
+}
+
+// @public (undocumented)
+export interface BackupPorts {
+    deliver(blob: Blob, filename: string): void;
+    onError?(path: string, err: unknown): void;
+    // (undocumented)
+    onProgress?(done: number, total: number, path: string): void;
+    pack(entries: {
+        path: string;
+        data: Blob;
+    }[]): Promise<Blob>;
+    readBytes(path: string): Promise<Blob | null>;
+}
+
+// @public (undocumented)
+export interface BackupReport {
+    // (undocumented)
+    archiveName: string | null;
+    // (undocumented)
+    bytes: number;
+    // (undocumented)
+    failed: string[];
+    // (undocumented)
+    overBudget: boolean;
+    // (undocumented)
+    spilled: number;
+    // (undocumented)
+    spilledNames: string[];
+    // (undocumented)
+    total: number;
+    // (undocumented)
+    zipped: number;
+    // (undocumented)
+    zippedNames: string[];
+}
+
+// @public (undocumented)
+export type BadgeKind = "syncedBoth" | "dirtyBoth" | "cloudOnly" | "localOnly" | "ghost" | "pendingGone" | "newerOnCloud" | "conflictBoth";
+
+// @public (undocumented)
+export function breadcrumb(folder: string): Crumb[];
+
+// @public (undocumented)
+export interface ChangePasswordDeps {
+    commitNewPassword: (pw: string) => Promise<void>;
+    // (undocumented)
+    forgetFilePassword: (name: string) => void;
+    // (undocumented)
+    newPassword: string;
+    // (undocumented)
+    oldPassword: string;
+    // (undocumented)
+    onError?: (name: string, e: unknown) => void;
+    // (undocumented)
+    onProgress?: (done: number, total: number, name: string) => void;
+    // (undocumented)
+    rekey: (name: string, newPassword: string) => Promise<{
+        status: string;
+    }>;
+    rememberFilePassword: (name: string, pw: string) => void;
+    targets: string[];
+}
+
+// @public (undocumented)
+export interface ChangePasswordReport {
+    // (undocumented)
+    kept: {
+        name: string;
+        status: string;
+    }[];
+    // (undocumented)
+    moved: string[];
+}
+
+// @public (undocumented)
+function clear(): void;
+
+// @public (undocumented)
+export interface CloudFile {
+    // (undocumented)
+    lastModifiedDateTime?: string;
+    // (undocumented)
+    name?: string;
+    // (undocumented)
+    path: string;
+}
+
+// @public (undocumented)
+export interface CloudFileMeta extends CloudFile {
+    // (undocumented)
+    id?: string;
+    // (undocumented)
+    size?: number;
+}
+
+// @public (undocumented)
+export function configureDeviceKv(kv: DeviceKv): void;
+
+// @public
+export function configureText(opts: {
+    t?: (key: GalleryTextKey, params?: Record<string, string | number>) => string | null | undefined;
+    lang?: GalleryLang;
+}): void;
+
+// @public (undocumented)
+export function copyTargetName(sourceName: string, taken: (name: string) => boolean): string;
+
+// @public
+export function createByteBudget(budget: number): {
+    admit(bytes: number): "zip" | "spill";
+    used(): number;
+    spilling(): boolean;
+};
+
+// @public (undocumented)
+export function createFirstFrameWatchdog(onStall: (info: {
+    folder: string;
+    elapsedMs: number;
+}) => void, opts?: {
+    timeoutMs?: number;
+    timers?: WatchdogTimers;
+    now?: () => number;
+}): FirstFrameWatchdog;
+
+// @public (undocumented)
+export function createFrameGate<T>(apply: (frame: T) => void, opts?: {
+    tailMs?: number;
+    maxHoldMs?: number;
+    timers?: FrameGateTimers;
+}): FrameGate<T>;
+
+// @public (undocumented)
+export function createGalleryAttachment(deps: AttachmentDeps): GalleryAttachment;
+
+// @public
+export function createGalleryCapability(deps: {
+    attachment: Pick<GalleryAttachment, "state">;
+    hasLiveStore: () => boolean;
+    onLine?: () => boolean;
+}): GalleryCapability;
+
+// @public (undocumented)
+export function createGalleryRegistry(kv: RegistryKV): GalleryRegistry;
+
+// @public (undocumented)
+export interface Crumb {
+    // (undocumented)
+    current: boolean;
+    // (undocumented)
+    label: string;
+    // (undocumented)
+    path: string;
+}
+
+// @public
+export const defaultT: GalleryT;
+
+// @public (undocumented)
+export type DetachResult = {
+    ok: true;
+} | {
+    ok: false;
+    reason: "doc-open";
+} | {
+    ok: false;
+    reason: "dirty";
+    dirtyCount: number;
+};
+
+// @public (undocumented)
+export interface DeviceKv {
+    // (undocumented)
+    get(key: string): string | null;
+    // (undocumented)
+    set(key: string, v: string | null): void;
+}
+
+// @public (undocumented)
+export function deviceKvGet(key: string): string | null;
+
+// @public (undocumented)
+export function deviceKvGetJson<T>(key: string, fallback: T): T;
+
+// @public (undocumented)
+export function deviceKvSet(key: string, v: string | null): void;
+
+// @public (undocumented)
+export function deviceKvSetJson(key: string, v: unknown): void;
+
+// @public (undocumented)
+interface DiagEntry {
+    // (undocumented)
+    l: DiagLevel;
+    // (undocumented)
+    m: string;
+    // (undocumented)
+    t: number;
+}
+
+// @public (undocumented)
+type DiagLevel = "error" | "warning" | "info" | "log" | "note";
+
+declare namespace diagLog {
+    export {
+        flush,
+        record,
+        note,
+        entries,
+        clear,
+        toText,
+        initDiagLog,
+        DiagLevel,
+        DiagEntry
+    }
+}
+
+// @public
+export interface DirHandleLike {
+    // (undocumented)
+    isSameEntry(other: DirHandleLike): Promise<boolean>;
+    // (undocumented)
+    readonly name: string;
+}
+
+// @public
+export function downloadStamp(now?: Date): string;
+
+// @public (undocumented)
+function entries(): readonly DiagEntry[];
+
+// @public (undocumented)
+export interface FirstFrameWatchdog {
+    // (undocumented)
+    arm(folder: string): void;
+    // (undocumented)
+    cancel(): void;
+    // (undocumented)
+    frame(folder: string): void;
+    // (undocumented)
+    isArmed(): boolean;
+}
+
+// @public
+export function flattenOntoWhite(data: Uint8ClampedArray): Uint8ClampedArray;
+
+// @public
+function flush(): void;
+
+// @public
+export interface FolderProbe {
+    // (undocumented)
+    authoritative: boolean;
+    // (undocumented)
+    files: BackupFileRef[];
+    // (undocumented)
+    folders: string[];
+    // (undocumented)
+    path: string;
+}
+
+// @public (undocumented)
+export interface FrameGate<T> {
+    // (undocumented)
+    isHeld(): boolean;
+    // (undocumented)
+    pointerDown(): void;
+    // (undocumented)
+    pointerUp(): void;
+    // (undocumented)
+    push(frame: T): void;
+    // (undocumented)
+    reset(): void;
+}
+
+// @public (undocumented)
+export interface FrameGateTimers {
+    // (undocumented)
+    clear(handle: unknown): void;
+    // (undocumented)
+    set(fn: () => void, ms: number): unknown;
+}
+
+// @public
+export const GALLERY_CAPABILITY_EVENT = "wp:gallery-capability-changed";
+
+// @public (undocumented)
 export const GALLERY_PACKAGE_BIRTH: "2026-09-09";
+
+// @public (undocumented)
+export const GALLERY_TEXT: Record<GalleryTextKey, Record<GalleryLang, string>>;
+
+// @public (undocumented)
+export interface GalleryAttachment {
+    attach(entry: GalleryEntry, opts?: {
+        online?: boolean;
+        gesture?: boolean;
+    }): Promise<void>;
+    detach(): Promise<DetachResult>;
+    forceDetach(): Promise<void>;
+    // (undocumented)
+    onChange(cb: (s: AttachmentState) => void): () => void;
+    setOnline(v: boolean): void;
+    // (undocumented)
+    state(): AttachmentState;
+}
+
+// @public (undocumented)
+export interface GalleryCapability {
+    // (undocumented)
+    galleryOnline(): boolean;
+    // (undocumented)
+    hasGallery(): boolean;
+}
+
+// @public
+export function galleryDefaultName(now?: Date): string;
+
+// @public (undocumented)
+export interface GalleryEntry {
+    // (undocumented)
+    createdAt: number;
+    // (undocumented)
+    dbId: string;
+    // (undocumented)
+    handle?: DirHandleLike;
+    // (undocumented)
+    homeAccountId?: string;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    kind: GalleryKind;
+    // (undocumented)
+    label: string;
+    // (undocumented)
+    lastActive: number | null;
+}
+
+// @public (undocumented)
+export interface GalleryItem {
+    // (undocumented)
+    cloud: CloudFile | null;
+    // (undocumented)
+    deletedAt?: number;
+    // (undocumented)
+    local: LocalSession | null;
+    // (undocumented)
+    name: string;
+}
+
+// @public (undocumented)
+export type GalleryKind = "onedrive" | "folder";
+
+// @public (undocumented)
+export type GalleryLang = "zh" | "en";
+
+// @public (undocumented)
+export interface GalleryRegistry {
+    // (undocumented)
+    clearLastActive(): Promise<void>;
+    // (undocumented)
+    forget(id: string): Promise<void>;
+    // (undocumented)
+    lastActive(): Promise<GalleryEntry | null>;
+    // (undocumented)
+    list(): Promise<GalleryEntry[]>;
+    mintFolder(handle: DirHandleLike): Promise<GalleryEntry>;
+    mintOneDrive(homeAccountId: string, username: string): Promise<GalleryEntry>;
+    // (undocumented)
+    relabel(id: string, label: string): Promise<void>;
+    seedLegacyOneDrive(p: {
+        homeAccountId: string;
+        username: string;
+    }): Promise<void>;
+    // (undocumented)
+    touch(id: string): Promise<void>;
+}
+
+// @public
+export const galleryRegistry: GalleryRegistry;
+
+// @public (undocumented)
+export type GalleryT = (key: GalleryTextKey, params?: Record<string, string | number>) => string;
+
+// @public (undocumented)
+export type GalleryTextKey = "gv.badge.ghost" | "gv.badge.pendingGone" | "gv.badge.dirtyBoth" | "gv.badge.newerOnCloud" | "gv.badge.conflictBoth" | "gv.badge.syncedBoth" | "gv.badge.cloudOnly" | "gv.badge.localOnly" | "gv.badge.localPlain" | "gv.badge.float" | "gv.rootDir" | "gv.time.unknown" | "gv.time.justNow" | "gv.time.minAgo" | "gv.time.hourAgo" | "gv.time.dayAgo" | "gv.src.both" | "gv.src.local" | "gv.src.cloud" | "gv.src.cloudStillAlive" | "name.copySuffix";
+
+// @public (undocumented)
+export interface GalleryTile {
+    // (undocumented)
+    badge: BadgeKind;
+    // (undocumented)
+    badgeTitle: string;
+    // (undocumented)
+    cloud: CloudFileMeta | null;
+    // (undocumented)
+    displayName: string;
+    // (undocumented)
+    encrypted: boolean;
+    // (undocumented)
+    fullPath: string;
+    // (undocumented)
+    ghost: boolean;
+    // (undocumented)
+    hasLocalThumb: boolean;
+    // (undocumented)
+    isActive: boolean;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    pendingGone: boolean;
+    // (undocumented)
+    size: number;
+    // (undocumented)
+    time: number;
+}
+
+// @public (undocumented)
+export interface GItem extends Omit<GalleryItem, "local" | "cloud"> {
+    // (undocumented)
+    cloud: CloudFileMeta | null;
+    // (undocumented)
+    cloudNewer?: boolean;
+    // (undocumented)
+    conflict?: boolean;
+    // (undocumented)
+    dirty?: boolean;
+    // (undocumented)
+    ghost?: boolean;
+    // (undocumented)
+    local: LocalSessionMeta | null;
+    // (undocumented)
+    newerOnCloud?: boolean;
+    // (undocumented)
+    pendingGone?: boolean;
+}
+
+// @public (undocumented)
+export function humanSize(b: number | null | undefined): string;
+
+// @public (undocumented)
+export function humanTime(ts: number): string;
+
+// @public (undocumented)
+export function idbRegistryKV(): RegistryKV;
+
+// @public
+export const imageBasename: (p: string) => string;
+
+// @public
+export function imageThumbToken(it: {
+    lastModified?: number;
+    size?: number;
+}): string;
+
+// @public
+export const imageTwinBareName: (folder: string, basename: string) => string;
+
+// @public
+function initDiagLog(opts?: {
+    app?: string;
+    version?: string;
+}): void;
+
+// @public (undocumented)
+export const isDocPath: (p: string) => boolean;
+
+// @public (undocumented)
+export const isImagePath: (p: string) => boolean;
+
+// @public (undocumented)
+export function itemTime(it: GalleryItem): number;
+
+// @public
+export interface LibraryManifest {
+    // (undocumented)
+    files: BackupFileRef[];
+    // (undocumented)
+    foldersVisited: number;
+    // (undocumented)
+    partialFolders: string[];
+    // (undocumented)
+    truncated: boolean;
+}
+
+// @public (undocumented)
+export interface LocalSession {
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    updatedAt?: number;
+}
+
+// @public (undocumented)
+export interface LocalSessionMeta extends LocalSession {
+    // (undocumented)
+    encrypted?: boolean;
+    // (undocumented)
+    size?: number;
+    // (undocumented)
+    thumb?: Blob | null;
+    // (undocumented)
+    trashKey?: string;
+}
+
+// @public
+export function mimeForImageName(name: string): string;
+
+// @public
+export interface NameBoundary {
+    // (undocumented)
+    bare: (s: string) => string;
+    // (undocumented)
+    full: (bare: string) => string;
+}
+
+// @public (undocumented)
+export function naturalCompare(a: string, b: string): number;
+
+// @public
+export function nextFreeExportName(base: string, ext: string, isOccupied: (name: string) => Promise<boolean>, fallbackStamp?: () => number): Promise<string>;
+
+// @public
+function note(tag: string, msg: string): void;
+
+// @public (undocumented)
+export function pathBasename(name: string): string;
+
+// @public (undocumented)
+export function pathFolder(name: string): string;
+
+// @public (undocumented)
+export function pathJoin(folder: string, name: string): string;
+
+// @public (undocumented)
+export function readSlate(galleryId?: string): ResumeSlate;
+
+// @public
+function record(level: DiagLevel, msg: string): void;
+
+// @public
+export interface RegistryKV {
+    // (undocumented)
+    delete(id: string): Promise<void>;
+    // (undocumented)
+    list(): Promise<GalleryEntry[]>;
+    // (undocumented)
+    put(e: GalleryEntry): Promise<void>;
+}
+
+// @public (undocumented)
+export const REKEY_OK: ReadonlySet<string>;
+
+// @public (undocumented)
+export function restoreLastSession(p: RestorePorts): Promise<RestoreOutcome>;
+
+// @public (undocumented)
+export type RestoreOutcome = "restored" | "fresh-first-boot" | "gallery-deliberate" | "blank-failed" | "blank-crash-loop" | "blank-locked-elsewhere" | "blank-no-gallery";
+
+// @public (undocumented)
+export interface RestorePorts {
+    getRestoreAttempt(): string | null;
+    getResume(): ResumeOpened;
+    hasGallery(): boolean;
+    isDocLockedElsewhere(name: string): Promise<boolean>;
+    // (undocumented)
+    onCrashLoopSkipped(name: string): void;
+    // (undocumented)
+    onLockedElsewhere(name: string): void;
+    onNoGallery(): void;
+    // (undocumented)
+    onNotFound(name: string): void;
+    // (undocumented)
+    onOpened(name: string): void;
+    openBlankCanvas(): Promise<void>;
+    openFreshCanvas(): Promise<void>;
+    openGallery(): Promise<void>;
+    restore(name: string): Promise<boolean>;
+    setNameMemoryOnly(name: string | null): void;
+    setRestoreAttempt(name: string | null): void;
+    // (undocumented)
+    updateSaveStatus(): void;
+}
+
+// @public
+export type ResumeOpened = {
+    kind: "doc";
+    path: string;
+} | {
+    kind: "gallery";
+} | null;
+
+// @public (undocumented)
+export interface ResumeSlate {
+    // (undocumented)
+    opened: ResumeOpened;
+    restoreAttempt: string | null;
+}
+
+// @public (undocumented)
+export function runChangePassword(d: ChangePasswordDeps): Promise<ChangePasswordReport>;
+
+// @public
+export function runLibraryBackup(files: BackupFileRef[], ports: BackupPorts, opts?: {
+    budget?: number;
+    now?: Date;
+    renderManifest?: (r: {
+        zipped: string[];
+        spilled: string[];
+        failed: string[];
+    }) => string;
+}): Promise<BackupReport>;
+
+// @public (undocumented)
+export function setActiveGalleryId(id: string | null): void;
+
+// @public
+export function setOpened(opened: ResumeOpened, galleryId?: string): void;
+
+// @public
+export function setRestoreAttempt(name: string | null, galleryId?: string): void;
+
+// @public
+export function snapshotFolderOnce(watch: WatchFolderFn, folder: string, opts?: {
+    settleMs?: number;
+    timeoutMs?: number;
+}): Promise<FolderProbe>;
+
+// @public
+export const SOLE_GALLERY_ID = "default";
+
+// @public
+export const spillName: (path: string) => string;
+
+// @public
+export interface SwappableStore {
+    // (undocumented)
+    dispose(opts?: {
+        drain?: boolean;
+    }): Promise<void>;
+    // (undocumented)
+    files: {
+        dirty: {
+            count(): Promise<number>;
+        };
+    };
+}
+
+// @public (undocumented)
+export const t: GalleryT;
+
+// @public
+export function thumbTargetSize(w: number, h: number, max: number): {
+    w: number;
+    h: number;
+};
+
+// @public (undocumented)
+export function tileFor(item: GItem, opts: {
+    signedIn: boolean;
+    activeName: string | null;
+    encrypted?: boolean;
+}): GalleryTile;
+
+// @public
+function toText(): string;
+
+// @public (undocumented)
+export interface TrashGItem {
+    // (undocumented)
+    cloud: CloudFileMeta | null;
+    // (undocumented)
+    conflictLive?: boolean;
+    // (undocumented)
+    deletedAt?: number;
+    // (undocumented)
+    encrypted?: boolean;
+    // (undocumented)
+    local: LocalSessionMeta | null;
+    // (undocumented)
+    name: string;
+}
+
+// @public (undocumented)
+export interface TrashTile {
+    // (undocumented)
+    cloud: CloudFileMeta | null;
+    // (undocumented)
+    deletedAt: number;
+    // (undocumented)
+    hasLocalThumb: boolean;
+    // (undocumented)
+    local: LocalSessionMeta | null;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    source: string;
+}
+
+// @public (undocumented)
+export function trashTileFor(item: TrashGItem): TrashTile;
+
+// @public (undocumented)
+export function uniqueBareName(stem: string, occupied: (fullName: string) => Promise<unknown>, naming?: NameBoundary): Promise<string>;
+
+// @public
+export function walkLibrary(probe: (folder: string) => Promise<FolderProbe>, opts?: {
+    root?: string;
+    maxFolders?: number;
+    onFolder?: (folder: string, visited: number) => void;
+}): Promise<LibraryManifest>;
+
+// @public (undocumented)
+export interface WatchdogTimers {
+    // (undocumented)
+    clear(handle: unknown): void;
+    // (undocumented)
+    set(fn: () => void, ms: number): unknown;
+}
+
+// @public (undocumented)
+export type WatchFolderFn = (folder: string, cb: (s: WatchSnapshot) => void) => () => void;
+
+// @public
+export interface WatchSnapshot {
+    // (undocumented)
+    complete: boolean;
+    // (undocumented)
+    folders: string[];
+    // (undocumented)
+    items: {
+        path: string;
+        size?: number;
+        syncState?: string;
+    }[];
+    // (undocumented)
+    path: string;
+    // (undocumented)
+    stale?: true;
+}
+
+// @public (undocumented)
+export function wireCapabilityBroadcast(win: {
+    addEventListener: Window["addEventListener"];
+    dispatchEvent: Window["dispatchEvent"];
+}): void;
 
 // (No @packageDocumentation comment for this package)
 

@@ -1,3 +1,22 @@
-// @internal/gallery 主入口——出生日 2026-09-09（Claude Fable 5.1）。
-// 提案 .h 过目前不搬任何模块（ai-docs/20260909-proposal-api.md = 提案；现状 .h = WeebPaint api/）。
+// @internal/gallery 门牌——出生 2026-09-09（Claude Fable 5.1）。提案 = ai-docs/20260909-proposal-api.md。
+// 本版 = core/ 纯核（无 DOM）：model / guards / library / boot / backup + 三个注入 seam（text / device-kv / naming）。UI 层随后。
 export const GALLERY_PACKAGE_BIRTH = "2026-09-09" as const;
+export * from "./core/text.ts";
+export * from "./core/device-kv.ts";
+export * from "./core/naming.ts";
+export * from "./core/model/gallery-model.ts";
+export * from "./core/model/gallery-path.ts";
+export * from "./core/model/natural-order.ts";
+export * from "./core/model/gallery-view-model.ts";
+export * from "./core/model/cloud-image-model.ts";
+export * from "./core/guards/frame-gate.ts";
+export * from "./core/guards/first-frame-watchdog.ts";
+export * as diagLog from "./core/guards/diag-log.ts";
+export * from "./core/library/gallery-registry.ts";
+export * from "./core/library/gallery-attachment.ts";
+export * from "./core/library/gallery-capability.ts";
+export * from "./core/library/active-gallery.ts";
+export * from "./core/boot/resume-slate.ts";
+export * from "./core/boot/boot-restore.ts";
+export * from "./core/backup/library-backup.ts";
+export * from "./core/backup/change-password.ts";
