@@ -21,3 +21,7 @@ export * from "./core/boot/boot-restore.ts";
 export * from "./core/backup/library-backup.ts";
 export * from "./core/backup/change-password.ts";
 export * from "./core/data-face.ts";
+export * from "./core/verbs.ts";
+export * from "./core/thumbs/thumb-store.ts";
+export * from "./core/thumbs/thumb-cache.ts";
+export * from "./core/thumbs/peek-thumb.ts";

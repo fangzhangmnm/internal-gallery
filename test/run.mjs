@@ -15,4 +15,6 @@ import "./boot-restore.test.ts";
 import "./library-backup.test.mjs";
 import "./change-password.test.mjs";
 import "./data-face.test.mjs";
+import "./verbs.test.mjs";
+import "./thumb-cache.test.mjs";
 run();
