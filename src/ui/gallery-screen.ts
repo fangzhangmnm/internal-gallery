@@ -13,6 +13,7 @@ import type { GalleryDataFace, GallerySnapshot, CloudImageItem } from "../core/d
 import { createGalleryVerbs, type VerbHost, type VerbDoc, type VerbStore, type VerbEncryption } from "../core/verbs.ts";
 import type { ThumbCache } from "../core/thumbs/thumb-cache.ts";
 import { t } from "../core/text.ts";
+import { isPng, readPngText, PNG_BLURB_KEYWORD } from "../core/thumbs/png-text.ts";
 
 /** 宿主 vendored 的 Vue prod ESM（提案 §7.1 决定 (a)）。 */
 export interface VueRuntime {
@@ -52,6 +53,8 @@ export interface GalleryScreenDeps {
     /** 0.1.2：无缩略图时卡片占位内容（HTML，通常是一枚图标）。不给 → 退回名字首字（WeebPaint 默认；WXHW 2026-09-10 user「所有的预览图都是 2……不要从名字生成」→ 宿主给 book/file 图标）。 */
     tilePlaceholderHtml?: (name: string) => string | undefined;
   };
+  /** 0.2.0：卡片比例。"1/1" 方图（WeebPaint 默认）；"2/3" 竖版书封（WXHW 书库；窄屏一排三本）。 */
+  tile?: { aspect?: "1/1" | "2/3" };
   naming?: NameBoundary;
   isZipDoc?: (fullName: string) => boolean;
   thumbs?: ThumbCache;
@@ -115,7 +118,10 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
     setup(props: { localThumb: Blob | null; encName: string | null; cloud: CloudFileMeta | null; fetchable: boolean; isCloud: boolean; cloudNewer: boolean; thumbToken: string; fallback: string; fallbackHtml: string; alt: string }) {
       const url = ref<string | null>(null), showCloud = ref(false), locked = ref(false), root = ref<HTMLElement | null>(null);
       let cloudEncBlob: Blob | null = null, objUrl: string | null = null, obs: IntersectionObserver | null = null;
-      const setBlob = (blob: Blob) => { if (objUrl) URL.revokeObjectURL(objUrl); objUrl = URL.createObjectURL(blob); url.value = objUrl; };
+      const blurb = ref("");
+      // 0.2.0：缩略图 PNG 自带的 Description 文本块 = 腰封 / caption → 悬停 tooltip（user 2026-09-10「thumbnail.png 的标准 tEXt 文本块…gallery 库的公共行为」）
+      const readBlurb = (blob: Blob) => { void blob.arrayBuffer().then((ab) => { const u8 = new Uint8Array(ab); blurb.value = isPng(u8) ? (readPngText(u8)[PNG_BLURB_KEYWORD] ?? "") : ""; }).catch(() => { blurb.value = ""; }); };
+      const setBlob = (blob: Blob) => { if (objUrl) URL.revokeObjectURL(objUrl); objUrl = URL.createObjectURL(blob); url.value = objUrl; readBlurb(blob); };
       const tryDecrypt = async () => {
         if (!enc) { locked.value = true; return; }
         let png: Blob | null = null;
@@ -150,10 +156,10 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       onUnmounted(() => { obs?.disconnect(); if (objUrl) URL.revokeObjectURL(objUrl); });
       const pixelated = ref(false);
       const onThumbLoad = (e: Event) => { pixelated.value = thumbLoadPixelated(e); };
-      return { url, showCloud, locked, root, ICON, lockedTitle: t("gal.lockedThumb"), pixelated, onThumbLoad };
+      return { url, showCloud, locked, root, ICON, lockedTitle: t("gal.lockedThumb"), pixelated, onThumbLoad, blurb };
     },
     template: `
-    <img v-if="url" class="gallery-tile-thumb" :class="{ pixelated }" :src="url" :alt="alt" loading="lazy" @load="onThumbLoad" />
+    <img v-if="url" class="gallery-tile-thumb" :class="{ pixelated }" :src="url" :alt="alt" :title="blurb || null" loading="lazy" @load="onThumbLoad" />
     <div v-else-if="locked" class="gallery-tile-thumb placeholder locked" :title="lockedTitle" @click.stop="$emit('unlock', encName || alt)">
       <span style="width:42px;height:42px;display:inline-block" v-html="ICON.lock"></span>
     </div>
@@ -342,7 +348,9 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         reupload: t("gal.reupload"), imageFile: t("gal.imageFile"), otherFile: t("gal.otherFile"),
         retry: t("gal.retry"), openDiag: t("gal.openDiag"), reload: t("gal.reload"),
       };
+      const tileTall = d.tile?.aspect === "2/3";
       return {
+        tileTall,
         view, folder, loading, stalled, retry, openDiag, reloadApp, openMenu, isEmpty, emptyText, L, phHtml,
         folderTiles, fileTiles, imageTiles, otherTiles, trashTiles, crumbs,
         badgeIcon, fmtMeta, ICON, toggleMenu, menuUp, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
@@ -373,7 +381,7 @@ const GALLERY_TEMPLATE = `
         </template>
       </div>
 
-      <div class="gallery-grid" v-show="!isEmpty || loading">
+      <div class="gallery-grid" :class="{ tall: tileTall }" v-show="!isEmpty || loading">
         <div v-if="loading" class="gallery-loading">
           <template v-if="!stalled">{{ L.loading }}</template>
           <template v-else>

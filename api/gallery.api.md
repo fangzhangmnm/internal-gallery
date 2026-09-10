@@ -16,6 +16,9 @@ import { WatchFolderErrorPhase } from '@internal/store';
 // @public (undocumented)
 export function activeGalleryId(): string;
 
+// @public
+export function areaResampleRgba(src: Uint8ClampedArray, sw: number, sh: number, tw: number, th: number): Uint8ClampedArray;
+
 // @public (undocumented)
 export interface AttachmentDeps {
     // (undocumented)
@@ -325,6 +328,9 @@ export function configureText(opts: {
 // @public (undocumented)
 export function copyTargetName(sourceName: string, taken: (name: string) => boolean): string;
 
+// @public (undocumented)
+export function crc32(bytes: Uint8Array, from?: number, to?: number): number;
+
 // @public
 export function createByteBudget(budget: number): {
     admit(bytes: number): "zip" | "spill";
@@ -582,7 +588,16 @@ export interface FirstFrameWatchdog {
 }
 
 // @public
+export function fitWithin(w: number, h: number, maxEdge: number): {
+    w: number;
+    h: number;
+};
+
+// @public
 export function flattenOntoWhite(data: Uint8ClampedArray): Uint8ClampedArray;
+
+// @public
+export function flattenWhiteInPlace(rgba: Uint8ClampedArray): Uint8ClampedArray;
 
 // @public
 function flush(): void;
@@ -2271,6 +2286,9 @@ export interface GalleryScreenDeps {
     store: () => VerbStore | null;
     // (undocumented)
     thumbs?: ThumbCache;
+    tile?: {
+        aspect?: "1/1" | "2/3";
+    };
     // (undocumented)
     ui: {
         iconHtml: (name: string, opts?: {
@@ -2418,6 +2436,9 @@ export const isDocPath: (p: string) => boolean;
 export const isImagePath: (p: string) => boolean;
 
 // @public (undocumented)
+export function isPng(bytes: Uint8Array): boolean;
+
+// @public (undocumented)
 export function itemTime(it: GalleryItem): number;
 
 // @public
@@ -2450,6 +2471,22 @@ export interface LocalSessionMeta extends LocalSession {
     thumb?: Blob | null;
     // (undocumented)
     trashKey?: string;
+}
+
+// @public
+export function makeThumbAdaptive(src: RgbaImage, opts: MakeThumbOpts): ThumbResult;
+
+// @public (undocumented)
+export interface MakeThumbOpts {
+    // (undocumented)
+    encodePng: PngEncoder;
+    keepAlpha?: boolean;
+    // (undocumented)
+    ladder?: readonly number[];
+    // (undocumented)
+    maxBytes?: number;
+    // (undocumented)
+    paletteColors?: number;
 }
 
 // @public (undocumented)
@@ -2506,6 +2543,15 @@ export interface PeekableFile {
         source: "local" | "cloud";
     }): Promise<Blob | null>;
 }
+
+// @public (undocumented)
+export const PNG_BLURB_KEYWORD = "Description";
+
+// @public (undocumented)
+export type PngEncoder = (rgba: Uint8ClampedArray, w: number, h: number, colors: number) => Uint8Array;
+
+// @public
+export function readPngText(png: Uint8Array): Record<string, string>;
 
 // @public (undocumented)
 export function readSlate(galleryId?: string): ResumeSlate;
@@ -2578,6 +2624,16 @@ export interface ResumeSlate {
     // (undocumented)
     opened: ResumeOpened;
     restoreAttempt: string | null;
+}
+
+// @public (undocumented)
+export interface RgbaImage {
+    // (undocumented)
+    data: Uint8ClampedArray;
+    // (undocumented)
+    h: number;
+    // (undocumented)
+    w: number;
 }
 
 // @public (undocumented)
@@ -2675,6 +2731,15 @@ export interface SyncGateSheets {
 export const t: GalleryT;
 
 // @public (undocumented)
+export const THUMB_LADDER: readonly number[];
+
+// @public (undocumented)
+export const THUMB_MAX_BYTES: number;
+
+// @public (undocumented)
+export const THUMB_PALETTE_COLORS = 256;
+
+// @public (undocumented)
 export interface ThumbCache {
     // (undocumented)
     clear(): Promise<number>;
@@ -2717,6 +2782,20 @@ export interface ThumbCacheDeps {
 
 // @public
 export const thumbKeyFor: (galleryId: string, fullName: string) => string;
+
+// @public (undocumented)
+export interface ThumbResult {
+    // (undocumented)
+    colors: number;
+    // (undocumented)
+    edge: number;
+    // (undocumented)
+    h: number;
+    // (undocumented)
+    png: Uint8Array;
+    // (undocumented)
+    w: number;
+}
 
 // @public (undocumented)
 export type ThumbSource = "local" | "cloud";
@@ -3010,6 +3089,9 @@ export function wireCapabilityBroadcast(win: {
 
 // @public (undocumented)
 export function wireCloudAuthRefresh(els: Pick<CloudAuthChipEls, "refreshBtn">, auth: CloudAuthPort, after: () => void): void;
+
+// @public
+export function withPngText(png: Uint8Array, keyword: string, text: string | null): Uint8Array;
 
 // (No @packageDocumentation comment for this package)
 

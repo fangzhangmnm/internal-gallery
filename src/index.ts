@@ -25,6 +25,8 @@ export * from "./core/verbs.ts";
 export * from "./core/thumbs/thumb-store.ts";
 export * from "./core/thumbs/thumb-cache.ts";
 export * from "./core/thumbs/peek-thumb.ts";
+export * from "./core/thumbs/png-text.ts";
+export * from "./core/thumbs/make-thumb.ts";
 export * from "./ui/store-ui.ts";
 export * from "./ui/gallery-screen.ts";
 export * from "./ui/shell-flows.ts";

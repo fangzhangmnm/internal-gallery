@@ -9,6 +9,9 @@ import { WatchFolderErrorPhase } from '@internal/store';
 
 export declare function activeGalleryId(): string;
 
+/** 面积平均缩小（straight RGBA → straight RGBA；premult 累加、反预乘）。放大时退化为近似盒复制，别用。 */
+export declare function areaResampleRgba(src: Uint8ClampedArray, sw: number, sh: number, tw: number, th: number): Uint8ClampedArray;
+
 export declare interface AttachmentDeps {
     storeAbsent: boolean;
     buildStore: (entry: GalleryEntry) => SwappableStore;
@@ -217,6 +220,8 @@ export declare function configureText(opts: {
 }): void;
 
 export declare function copyTargetName(sourceName: string, taken: (name: string) => boolean): string;
+
+export declare function crc32(bytes: Uint8Array, from?: number, to?: number): number;
 
 /** 累计字节预算。admit 返 "spill" = 这件（及之后全部）不进 zip，改逐件下载。
  *  一旦溢出就**不再回头**——包一旦封顶就是封顶，别让小文件插队造成「有的进包有的没进」的迷惑顺序。 */
@@ -436,8 +441,17 @@ export declare interface FirstFrameWatchdog {
     isArmed(): boolean;
 }
 
+/** 等比缩到长边 ≤ maxEdge；永不放大。 */
+export declare function fitWithin(w: number, h: number, maxEdge: number): {
+    w: number;
+    h: number;
+};
+
 /** RGBA 平铺到白底（就地写，返回同一 buffer）：jpeg 无 alpha，透明区不平铺会糊成黑。 */
 export declare function flattenOntoWhite(data: Uint8ClampedArray): Uint8ClampedArray;
+
+/** 拍平白底（in place）：straight RGBA → 不透明。缩略图/JPEG 无 alpha 场景用。 */
+export declare function flattenWhiteInPlace(rgba: Uint8ClampedArray): Uint8ClampedArray;
 
 /** 立即落盘（pagehide / 清空时调；平时 250ms 合并）。存储不可用时 device-kv 内存降级，本函数不抛。 */
 declare function flush(): void;
@@ -2043,6 +2057,10 @@ export declare interface GalleryScreenDeps {
         /** 0.1.2：无缩略图时卡片占位内容（HTML，通常是一枚图标）。不给 → 退回名字首字（WeebPaint 默认；WXHW 2026-09-10 user「所有的预览图都是 2……不要从名字生成」→ 宿主给 book/file 图标）。 */
         tilePlaceholderHtml?: (name: string) => string | undefined;
     };
+    /** 0.2.0：卡片比例。"1/1" 方图（WeebPaint 默认）；"2/3" 竖版书封（WXHW 书库；窄屏一排三本）。 */
+    tile?: {
+        aspect?: "1/1" | "2/3";
+    };
     naming?: NameBoundary;
     isZipDoc?: (fullName: string) => boolean;
     thumbs?: ThumbCache;
@@ -2153,6 +2171,8 @@ export declare const isDocPath: (p: string) => boolean;
 
 export declare const isImagePath: (p: string) => boolean;
 
+export declare function isPng(bytes: Uint8Array): boolean;
+
 export declare function itemTime(it: GalleryItem): number;
 
 /** 全库清单。partialFolders = 没拿到权威帧的夹（诚实性：清单可能缺项，UI 要说出来）。 */
@@ -2173,6 +2193,18 @@ export declare interface LocalSessionMeta extends LocalSession {
     thumb?: Blob | null;
     encrypted?: boolean;
     trashKey?: string;
+}
+
+/** 自适应缩略图：阶梯逐档、每档先无损后调色板，第一个 ≤ maxBytes 的胜出；都超 → 最小档调色板。 */
+export declare function makeThumbAdaptive(src: RgbaImage, opts: MakeThumbOpts): ThumbResult;
+
+export declare interface MakeThumbOpts {
+    encodePng: PngEncoder;
+    maxBytes?: number;
+    ladder?: readonly number[];
+    paletteColors?: number;
+    /** 保 alpha（WeebPaint ora 约定「保 alpha 不涂底」）；false = 拍平白底（书封面）。默认 true。 */
+    keepAlpha?: boolean;
 }
 
 export declare function memoryThumbStore(): ThumbStore;
@@ -2217,6 +2249,13 @@ export declare interface PeekableFile {
         source: "local" | "cloud";
     }): Promise<Blob | null>;
 }
+
+export declare const PNG_BLURB_KEYWORD = "Description";
+
+export declare type PngEncoder = (rgba: Uint8ClampedArray, w: number, h: number, colors: number) => Uint8Array;
+
+/** 读全部文本块 → 关键字到文本的映射。同关键字多块取最后一个。 */
+export declare function readPngText(png: Uint8Array): Record<string, string>;
 
 export declare function readSlate(galleryId?: string): ResumeSlate;
 
@@ -2295,6 +2334,12 @@ export declare interface ResumeSlate {
     /** 崩溃环断路标记（boot-restore 纪律③）：boot 自动开画前写目标名，优雅收场清 null。
      *  与 opened 同记录同原子写——「写标记必须先于 restore 落盘」由同步写直接保证。 */
     restoreAttempt: string | null;
+}
+
+export declare interface RgbaImage {
+    data: Uint8ClampedArray;
+    w: number;
+    h: number;
 }
 
 export declare function runChangePassword(d: ChangePasswordDeps): Promise<ChangePasswordReport>;
@@ -2381,6 +2426,12 @@ export declare interface SyncGateSheets {
 
 export declare const t: GalleryT;
 
+export declare const THUMB_LADDER: readonly number[];
+
+export declare const THUMB_MAX_BYTES: number;
+
+export declare const THUMB_PALETTE_COLORS = 256;
+
 export declare interface ThumbCache {
     read(name: string): Promise<CachedThumb | null>;
     write(name: string, token: string, blob: Blob): Promise<void>;
@@ -2413,6 +2464,14 @@ export declare interface ThumbCacheDeps {
 
 /** 多库 key：legacy 库 id "default" 不加前缀（WeebPaint 存量缓存零迁移）。 */
 export declare const thumbKeyFor: (galleryId: string, fullName: string) => string;
+
+export declare interface ThumbResult {
+    png: Uint8Array;
+    w: number;
+    h: number;
+    colors: number;
+    edge: number;
+}
 
 export declare type ThumbSource = "local" | "cloud";
 
@@ -2623,5 +2682,9 @@ export declare function wireCapabilityBroadcast(win: {
 }): void;
 
 export declare function wireCloudAuthRefresh(els: Pick<CloudAuthChipEls, "refreshBtn">, auth: CloudAuthPort, after: () => void): void;
+
+/** 写 / 删一个关键字的文本：先删同关键字的旧块（tEXt / zTXt / iTXt），text 非空则在 IEND 前插一块 iTXt（UTF-8）。
+ *  非 PNG / 无 IEND → 原样返回（不假装成功）。关键字按 PNG 规范 1–79 字节 Latin-1。 */
+export declare function withPngText(png: Uint8Array, keyword: string, text: string | null): Uint8Array;
 
 export { }

@@ -17,4 +17,6 @@ import "./change-password.test.mjs";
 import "./data-face.test.mjs";
 import "./verbs.test.mjs";
 import "./thumb-cache.test.mjs";
+import "./png-text.test.mjs";
+import "./make-thumb.test.mjs";
 run();
