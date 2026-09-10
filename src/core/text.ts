@@ -274,6 +274,22 @@ export const GALLERY_TEXT = {
   "save.signInLater": { zh: "暂不", en: "Not now", ja: "今はしない" },
   "save.signInNow": { zh: "登录", en: "Sign in", ja: "ログイン" },
   "save.signInPromptTitle": { zh: "已保存到本机", en: "Saved on this device", ja: "この端末に保存しました" },
+  // store busy 文案（st.*，WeebPaint store-ui 的映射表引用，非 t() 字面量，机器抄漏 → 手补 2026-09-09）
+  "st.syncPushing": { zh: "正在同步…", en: "Syncing…", ja: "同期中…" },
+  "st.fileRenaming": { zh: "重命名…", en: "Renaming…", ja: "名前変更中…" },
+  "st.filePulling": { zh: "拉取中…", en: "Pulling…", ja: "取得中…" },
+  "st.cloudChecking": { zh: "检查云端…", en: "Checking cloud…", ja: "クラウドを確認中…" },
+  "st.fileDeleting": { zh: "删除中…", en: "Deleting…", ja: "削除中…" },
+  "st.trashRestoring": { zh: "恢复中…", en: "Restoring…", ja: "復元中…" },
+  "st.trashPurging": { zh: "彻底删除…", en: "Deleting permanently…", ja: "完全に削除中…" },
+  "st.trashEmptyTrash": { zh: "清空回收站…", en: "Emptying trash…", ja: "ゴミ箱を空にしています…" },
+  "st.trashEmptyBackups": { zh: "清空备份箱…", en: "Emptying backup box…", ja: "バックアップボックスを空にしています…" },
+  "st.fileEncrypting": { zh: "正在加密 {name}…", en: "Encrypting {name}…", ja: "暗号化中 {name}…" },
+  "st.fileDecrypting": { zh: "正在解除加密 {name}…", en: "Decrypting {name}…", ja: "暗号化解除中 {name}…" },
+  "st.fileRekeying": { zh: "正在换密码重封 {name}…", en: "Re-keying {name}…", ja: "パスワード変更中 {name}…" },
+  "st.fileReuploading": { zh: "重新上传…", en: "Re-uploading…", ja: "再アップロード中…" },
+  "st.folderCreating": { zh: "新建文件夹…", en: "Creating folder…", ja: "フォルダ作成中…" },
+  "st.folderDeleting": { zh: "删除文件夹…", en: "Deleting folder…", ja: "フォルダ削除中…" },
 } as const satisfies Record<string, Partial<Record<GalleryLang, string>>>;
 export type GalleryTextKey = keyof typeof GALLERY_TEXT;
 export type GalleryT = (key: GalleryTextKey, params?: Record<string, string | number>) => string;

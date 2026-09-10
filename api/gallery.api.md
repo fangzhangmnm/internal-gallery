@@ -5,6 +5,11 @@
 ```ts
 
 import { Item } from '@internal/store';
+import type { NoticeHandle } from '@internal/workbench-elements';
+import type { NoticeOpts } from '@internal/workbench-elements';
+import type { StoreTextKey } from '@internal/store';
+import type { StoreTextParams } from '@internal/store';
+import type { StoreUI } from '@internal/store';
 import { TrashItem } from '@internal/store';
 import { WatchFolderErrorPhase } from '@internal/store';
 
@@ -1827,6 +1832,81 @@ export const GALLERY_TEXT: {
         readonly en: "Saved on this device";
         readonly ja: "この端末に保存しました";
     };
+    readonly "st.syncPushing": {
+        readonly zh: "正在同步…";
+        readonly en: "Syncing…";
+        readonly ja: "同期中…";
+    };
+    readonly "st.fileRenaming": {
+        readonly zh: "重命名…";
+        readonly en: "Renaming…";
+        readonly ja: "名前変更中…";
+    };
+    readonly "st.filePulling": {
+        readonly zh: "拉取中…";
+        readonly en: "Pulling…";
+        readonly ja: "取得中…";
+    };
+    readonly "st.cloudChecking": {
+        readonly zh: "检查云端…";
+        readonly en: "Checking cloud…";
+        readonly ja: "クラウドを確認中…";
+    };
+    readonly "st.fileDeleting": {
+        readonly zh: "删除中…";
+        readonly en: "Deleting…";
+        readonly ja: "削除中…";
+    };
+    readonly "st.trashRestoring": {
+        readonly zh: "恢复中…";
+        readonly en: "Restoring…";
+        readonly ja: "復元中…";
+    };
+    readonly "st.trashPurging": {
+        readonly zh: "彻底删除…";
+        readonly en: "Deleting permanently…";
+        readonly ja: "完全に削除中…";
+    };
+    readonly "st.trashEmptyTrash": {
+        readonly zh: "清空回收站…";
+        readonly en: "Emptying trash…";
+        readonly ja: "ゴミ箱を空にしています…";
+    };
+    readonly "st.trashEmptyBackups": {
+        readonly zh: "清空备份箱…";
+        readonly en: "Emptying backup box…";
+        readonly ja: "バックアップボックスを空にしています…";
+    };
+    readonly "st.fileEncrypting": {
+        readonly zh: "正在加密 {name}…";
+        readonly en: "Encrypting {name}…";
+        readonly ja: "暗号化中 {name}…";
+    };
+    readonly "st.fileDecrypting": {
+        readonly zh: "正在解除加密 {name}…";
+        readonly en: "Decrypting {name}…";
+        readonly ja: "暗号化解除中 {name}…";
+    };
+    readonly "st.fileRekeying": {
+        readonly zh: "正在换密码重封 {name}…";
+        readonly en: "Re-keying {name}…";
+        readonly ja: "パスワード変更中 {name}…";
+    };
+    readonly "st.fileReuploading": {
+        readonly zh: "重新上传…";
+        readonly en: "Re-uploading…";
+        readonly ja: "再アップロード中…";
+    };
+    readonly "st.folderCreating": {
+        readonly zh: "新建文件夹…";
+        readonly en: "Creating folder…";
+        readonly ja: "フォルダ作成中…";
+    };
+    readonly "st.folderDeleting": {
+        readonly zh: "删除文件夹…";
+        readonly en: "Deleting folder…";
+        readonly ja: "フォルダ削除中…";
+    };
 };
 
 // @public (undocumented)
@@ -1858,6 +1938,30 @@ export type GalleryDataFace = ReturnType<typeof createGalleryDataFace>;
 // @public
 export function galleryDefaultName(now?: Date): string;
 
+// @public
+export interface GalleryDocHost extends VerbDoc {
+    importImageAsDoc?(file: File, opts: {
+        nameOverride: string;
+    }): Promise<void>;
+    // (undocumented)
+    open(item: GItem): Promise<void>;
+}
+
+// @public (undocumented)
+export interface GalleryEncryption extends VerbEncryption {
+    // (undocumented)
+    decryptCloudPeekThumb(name: string, enc: Blob): Promise<Blob | null>;
+    isEncrypted(name: string): Promise<boolean>;
+    // (undocumented)
+    isEncryptedPeekBlob(b: Blob): boolean;
+    // (undocumented)
+    isUnlocked(): boolean;
+    // (undocumented)
+    localPeekThumb(name: string): Promise<Blob | null>;
+    // (undocumented)
+    onLockChange(cb: (unlocked: boolean) => void): void;
+}
+
 // @public (undocumented)
 export interface GalleryEntry {
     // (undocumented)
@@ -1876,6 +1980,30 @@ export interface GalleryEntry {
     label: string;
     // (undocumented)
     lastActive: number | null;
+}
+
+// @public (undocumented)
+export interface GalleryHandle {
+    // (undocumented)
+    emptyTrash(scope?: "local" | "cloud" | "both"): void;
+    // (undocumented)
+    getFolder(): string;
+    // (undocumented)
+    getView(): "files" | "trash";
+    // (undocumented)
+    hydrateFolder(path: string): void;
+    // (undocumented)
+    invalidateEncrypted(name: string): void;
+    // (undocumented)
+    refresh(): void;
+    // (undocumented)
+    requestUnlock(): Promise<boolean>;
+    // (undocumented)
+    setFolder(path: string): void;
+    // (undocumented)
+    setView(v: "files" | "trash"): void;
+    // (undocumented)
+    unmount(): void;
 }
 
 // @public (undocumented)
@@ -1923,6 +2051,50 @@ export interface GalleryRegistry {
 
 // @public
 export const galleryRegistry: GalleryRegistry;
+
+// @public (undocumented)
+export interface GalleryScreenDeps {
+    // (undocumented)
+    data: GalleryDataFace;
+    // (undocumented)
+    doc: GalleryDocHost;
+    // (undocumented)
+    encryption?: GalleryEncryption;
+    folderMemory?: {
+        get(): string;
+        set(p: string): void;
+    };
+    // (undocumented)
+    host: VerbHost;
+    // (undocumented)
+    imageThumbs?: {
+        getOrFetch(path: string, token: string): Promise<Blob>;
+    };
+    isGalleryVisible?: () => boolean;
+    // (undocumented)
+    isZipDoc?: (fullName: string) => boolean;
+    // (undocumented)
+    naming?: NameBoundary;
+    // (undocumented)
+    openDiag?: () => void;
+    // (undocumented)
+    reloadApp?: () => void;
+    // (undocumented)
+    reportError: (err: unknown, level?: "error" | "warning" | "info" | "log") => void;
+    // (undocumented)
+    store: () => VerbStore | null;
+    // (undocumented)
+    thumbs?: ThumbCache;
+    // (undocumented)
+    ui: {
+        iconHtml: (name: string, opts?: {
+            size?: number;
+            cls?: string;
+        }) => string;
+    };
+    // (undocumented)
+    vue: VueRuntime;
+}
 
 // @public (undocumented)
 export interface GallerySnapshot {
@@ -2081,6 +2253,9 @@ export function memoryThumbStore(): ThumbStore;
 // @public
 export function mimeForImageName(name: string): string;
 
+// @public (undocumented)
+export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): GalleryHandle;
+
 // @public
 export interface NameBoundary {
     // (undocumented)
@@ -2221,6 +2396,24 @@ export const SOLE_GALLERY_ID = "default";
 export const spillName: (path: string) => string;
 
 // @public (undocumented)
+export interface StoreUIDeps {
+    // (undocumented)
+    busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>;
+    // (undocumented)
+    naming?: NameBoundary;
+    // (undocumented)
+    reportError: (err: unknown, level?: "error" | "warning" | "info" | "log") => void;
+    // (undocumented)
+    sheets: SyncGateSheets;
+    // (undocumented)
+    showNotice: (opts: NoticeOpts) => NoticeHandle;
+    text?: (key: StoreTextKey, params?: StoreTextParams) => string | undefined;
+}
+
+// @public (undocumented)
+export function storeUIFor(d: StoreUIDeps): StoreUI;
+
+// @public (undocumented)
 export const SUFFIX_BYTES = 81920;
 
 // @public
@@ -2235,6 +2428,24 @@ export interface SwappableStore {
             count(): Promise<number>;
         };
     };
+}
+
+// @public
+export interface SyncGateSheets {
+    // (undocumented)
+    lockSyncGate<T = string>(o: {
+        title: string;
+        message: string;
+        showSpinner?: boolean;
+        note?: string;
+        actions: {
+            label: string;
+            value: T;
+            primary?: boolean;
+        }[];
+    }): Promise<T>;
+    // (undocumented)
+    settleSyncGate(value: unknown): void;
 }
 
 // @public (undocumented)
@@ -2501,6 +2712,35 @@ export interface VerbStore {
             }[];
         }>;
     };
+}
+
+// @public
+export interface VueRuntime {
+    // (undocumented)
+    computed: <T>(fn: () => T) => {
+        value: T;
+    };
+    // (undocumented)
+    createApp: (root: unknown) => {
+        mount(el: HTMLElement): unknown;
+        unmount(): void;
+    };
+    // (undocumented)
+    defineComponent: (o: unknown) => unknown;
+    // (undocumented)
+    nextTick: (fn?: () => void) => Promise<void>;
+    // (undocumented)
+    onMounted: (fn: () => void) => void;
+    // (undocumented)
+    onUnmounted: (fn: () => void) => void;
+    // (undocumented)
+    reactive: <T extends object>(o: T) => T;
+    // (undocumented)
+    ref: <T>(v: T) => {
+        value: T;
+    };
+    // (undocumented)
+    watch: (src: () => unknown, cb: () => void) => void;
 }
 
 // @public

@@ -1,4 +1,9 @@
 import { Item } from '@internal/store';
+import type { NoticeHandle } from '@internal/workbench-elements';
+import type { NoticeOpts } from '@internal/workbench-elements';
+import type { StoreTextKey } from '@internal/store';
+import type { StoreTextParams } from '@internal/store';
+import type { StoreUI } from '@internal/store';
 import { TrashItem } from '@internal/store';
 import { WatchFolderErrorPhase } from '@internal/store';
 
@@ -1717,6 +1722,81 @@ export declare const GALLERY_TEXT: {
         readonly en: "Saved on this device";
         readonly ja: "この端末に保存しました";
     };
+    readonly "st.syncPushing": {
+        readonly zh: "正在同步…";
+        readonly en: "Syncing…";
+        readonly ja: "同期中…";
+    };
+    readonly "st.fileRenaming": {
+        readonly zh: "重命名…";
+        readonly en: "Renaming…";
+        readonly ja: "名前変更中…";
+    };
+    readonly "st.filePulling": {
+        readonly zh: "拉取中…";
+        readonly en: "Pulling…";
+        readonly ja: "取得中…";
+    };
+    readonly "st.cloudChecking": {
+        readonly zh: "检查云端…";
+        readonly en: "Checking cloud…";
+        readonly ja: "クラウドを確認中…";
+    };
+    readonly "st.fileDeleting": {
+        readonly zh: "删除中…";
+        readonly en: "Deleting…";
+        readonly ja: "削除中…";
+    };
+    readonly "st.trashRestoring": {
+        readonly zh: "恢复中…";
+        readonly en: "Restoring…";
+        readonly ja: "復元中…";
+    };
+    readonly "st.trashPurging": {
+        readonly zh: "彻底删除…";
+        readonly en: "Deleting permanently…";
+        readonly ja: "完全に削除中…";
+    };
+    readonly "st.trashEmptyTrash": {
+        readonly zh: "清空回收站…";
+        readonly en: "Emptying trash…";
+        readonly ja: "ゴミ箱を空にしています…";
+    };
+    readonly "st.trashEmptyBackups": {
+        readonly zh: "清空备份箱…";
+        readonly en: "Emptying backup box…";
+        readonly ja: "バックアップボックスを空にしています…";
+    };
+    readonly "st.fileEncrypting": {
+        readonly zh: "正在加密 {name}…";
+        readonly en: "Encrypting {name}…";
+        readonly ja: "暗号化中 {name}…";
+    };
+    readonly "st.fileDecrypting": {
+        readonly zh: "正在解除加密 {name}…";
+        readonly en: "Decrypting {name}…";
+        readonly ja: "暗号化解除中 {name}…";
+    };
+    readonly "st.fileRekeying": {
+        readonly zh: "正在换密码重封 {name}…";
+        readonly en: "Re-keying {name}…";
+        readonly ja: "パスワード変更中 {name}…";
+    };
+    readonly "st.fileReuploading": {
+        readonly zh: "重新上传…";
+        readonly en: "Re-uploading…";
+        readonly ja: "再アップロード中…";
+    };
+    readonly "st.folderCreating": {
+        readonly zh: "新建文件夹…";
+        readonly en: "Creating folder…";
+        readonly ja: "フォルダ作成中…";
+    };
+    readonly "st.folderDeleting": {
+        readonly zh: "删除文件夹…";
+        readonly en: "Deleting folder…";
+        readonly ja: "フォルダ削除中…";
+    };
 };
 
 export declare interface GalleryAttachment {
@@ -1748,6 +1828,25 @@ export declare type GalleryDataFace = ReturnType<typeof createGalleryDataFace>;
 /** 默认新建名 = yyyymmdd-hex4（家族惯例；两家 policy.defaultNewName 的默认实现）。禁「未命名」。 */
 export declare function galleryDefaultName(now?: Date): string;
 
+/** 图库对编辑器的全部要求（提案 §2 DocHost；WeebPaint session-state 的十处直调收成这一个端口）。 */
+export declare interface GalleryDocHost extends VerbDoc {
+    open(item: GItem): Promise<void>;
+    /** 图片 tile 孪生语义（WeebPaint）：把图片字节转生成新文档；不实现 = 图片 tile 只显示不可开。 */
+    importImageAsDoc?(file: File, opts: {
+        nameOverride: string;
+    }): Promise<void>;
+}
+
+export declare interface GalleryEncryption extends VerbEncryption {
+    isUnlocked(): boolean;
+    onLockChange(cb: (unlocked: boolean) => void): void;
+    isEncryptedPeekBlob(b: Blob): boolean;
+    localPeekThumb(name: string): Promise<Blob | null>;
+    decryptCloudPeekThumb(name: string, enc: Blob): Promise<Blob | null>;
+    /** 本地字节是不是加密容器（纯本地读文件头，无网络）。 */
+    isEncrypted(name: string): Promise<boolean>;
+}
+
 export declare interface GalleryEntry {
     id: string;
     kind: GalleryKind;
@@ -1757,6 +1856,19 @@ export declare interface GalleryEntry {
     handle?: DirHandleLike;
     lastActive: number | null;
     createdAt: number;
+}
+
+export declare interface GalleryHandle {
+    refresh(): void;
+    setView(v: "files" | "trash"): void;
+    getView(): "files" | "trash";
+    setFolder(path: string): void;
+    hydrateFolder(path: string): void;
+    getFolder(): string;
+    emptyTrash(scope?: "local" | "cloud" | "both"): void;
+    requestUnlock(): Promise<boolean>;
+    invalidateEncrypted(name: string): void;
+    unmount(): void;
 }
 
 export declare interface GalleryItem {
@@ -1793,6 +1905,37 @@ export declare interface GalleryRegistry {
 
 /** 浏览器单例（懒开库：import 本身零 IDB 访问，node 测试 import 安全）。 */
 export declare const galleryRegistry: GalleryRegistry;
+
+export declare interface GalleryScreenDeps {
+    vue: VueRuntime;
+    store: () => VerbStore | null;
+    data: GalleryDataFace;
+    doc: GalleryDocHost;
+    host: VerbHost;
+    ui: {
+        iconHtml: (name: string, opts?: {
+            size?: number;
+            cls?: string;
+        }) => string;
+    };
+    naming?: NameBoundary;
+    isZipDoc?: (fullName: string) => boolean;
+    thumbs?: ThumbCache;
+    imageThumbs?: {
+        getOrFetch(path: string, token: string): Promise<Blob>;
+    };
+    encryption?: GalleryEncryption;
+    /** 「上次在哪个夹」的记忆（WeebPaint = synced collection appState.currentDirectory）；不给 = 只记内存。 */
+    folderMemory?: {
+        get(): string;
+        set(p: string): void;
+    };
+    /** 手指按住不重绘的门只在图库可见时持（WeebPaint: body[data-mode=gallery]）；不给 = 恒真。 */
+    isGalleryVisible?: () => boolean;
+    reportError: (err: unknown, level?: "error" | "warning" | "info" | "log") => void;
+    openDiag?: () => void;
+    reloadApp?: () => void;
+}
 
 export declare interface GallerySnapshot {
     path: string;
@@ -1898,6 +2041,8 @@ export declare function memoryThumbStore(): ThumbStore;
 
 /** File 包装的 MIME（decodeImageFile 实际按字节嗅探，给对只是礼貌）。 */
 export declare function mimeForImageName(name: string): string;
+
+export declare function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): GalleryHandle;
 
 /** 裸名 ↔ 库全名的边界（WeebPaint：`X` ↔ `X.ora`；身份=全名的 app 传恒等/不传）。 */
 export declare interface NameBoundary {
@@ -2040,6 +2185,18 @@ export declare const SOLE_GALLERY_ID = "default";
 /** 溢出逐件下载时的落地名：路径分隔符压成 `_`，保住来源夹（不同夹同名不会互相盖）。 */
 export declare const spillName: (path: string) => string;
 
+export declare interface StoreUIDeps {
+    busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>;
+    showNotice: (opts: NoticeOpts) => NoticeHandle;
+    sheets: SyncGateSheets;
+    reportError: (err: unknown, level?: "error" | "warning" | "info" | "log") => void;
+    naming?: NameBoundary;
+    /** 宿主 i18n 接管 store 的 busy 文案（不给 = 包内默认 st.*）。 */
+    text?: (key: StoreTextKey, params?: StoreTextParams) => string | undefined;
+}
+
+export declare function storeUIFor(d: StoreUIDeps): StoreUI;
+
 export declare const SUFFIX_BYTES = 81920;
 
 /** attach/detach 需要的全 Store 最小面（app-store seam 供真件；测试供假件）。 */
@@ -2052,6 +2209,22 @@ export declare interface SwappableStore {
             count(): Promise<number>;
         };
     };
+}
+
+/** 宿主提供的 sheet 面（WeebPaint sheets.ts / WXHW sheets.ts 同形；本包不出 sheet UI）。 */
+export declare interface SyncGateSheets {
+    lockSyncGate<T = string>(o: {
+        title: string;
+        message: string;
+        showSpinner?: boolean;
+        note?: string;
+        actions: {
+            label: string;
+            value: T;
+            primary?: boolean;
+        }[];
+    }): Promise<T>;
+    settleSyncGate(value: unknown): void;
 }
 
 export declare const t: GalleryT;
@@ -2243,6 +2416,26 @@ export declare interface VerbStore {
             }[];
         }>;
     };
+}
+
+/** 宿主 vendored 的 Vue prod ESM（提案 §7.1 决定 (a)）。 */
+export declare interface VueRuntime {
+    createApp: (root: unknown) => {
+        mount(el: HTMLElement): unknown;
+        unmount(): void;
+    };
+    defineComponent: (o: unknown) => unknown;
+    reactive: <T extends object>(o: T) => T;
+    ref: <T>(v: T) => {
+        value: T;
+    };
+    computed: <T>(fn: () => T) => {
+        value: T;
+    };
+    watch: (src: () => unknown, cb: () => void) => void;
+    onMounted: (fn: () => void) => void;
+    onUnmounted: (fn: () => void) => void;
+    nextTick: (fn?: () => void) => Promise<void>;
 }
 
 /** 逐夹快照 → 全库扁平清单（BFS；同 path 去重、子夹去重防环、maxFolders 兜住病态深树）。 */
