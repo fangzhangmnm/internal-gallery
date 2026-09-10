@@ -127,7 +127,11 @@ export interface GalleryPolicy {
 
 WeebPaint 的 `t(key)` 是 `keyof typeof S` 闭集，包里不能用。方案：本包导出 `GalleryTextKey`（字面量联合，约 60 个 key）+ 一份 zh 默认串（从 WeebPaint `strings.ts` 抄出这 60 条）；`deps.t` 由宿主实现，宿主把这 60 个 key 并进自己的 SSoT（WeebPaint 现成，WXHW 中英各补一遍）。宿主没实现的 key 落包内 zh 默认，**不许裸英文占位**。
 
-## 7. 开放问题（要 user 拍）
+## 7. 开放问题 → 已按推荐定（user 2026-09-09 委托：「不一定想得明白，要不你先推进吧。加油」；以下是 AI 在委托下的决定，user 随时可翻）
+
+1. Vue = **(a) 注入**。2. **A5 `@internal/workbench-elements` 先出生，同一轮**。3. `newDoc`：包出名字 + 夹两栏，app 域附加表单经 policy 注入渲染回调。4. 首版 **0.1.0**，exports 过目仍按版本纪律走（user 不在场时由本 doc 的 §2 契约当过目基线，形状变了回写）。
+
+### 7.1 原题（存档）
 
 1. **Vue**：`gallery.ts` 是 Vue 深模块。抽不重写 ⇒ 包依赖 Vue。选项：(a) `deps.vue` 注入宿主 vendored 的 Vue（WeebPaint 已有；WXHW / CatsUp 各 vendor 一份 prod ESM，约 150KB）；(b) 包自带一份 Vue（宿主若也用 Vue 就双份）；(c) 屏幕改 vanilla（= 重写，违背「抽」）。**推荐 (a)**。
 2. **顺序**：本包的 UI 层依赖 `@internal/workbench-elements`（CatsUp 总账 A5，签名已 pin 在 WeebPaint `api/src/ui/*.d.ts` v0.13.15）。A5 要先出生，否则本包只能先出 core/。**推荐：A5 先，两包同一轮**。
