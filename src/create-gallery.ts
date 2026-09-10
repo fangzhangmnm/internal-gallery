@@ -14,7 +14,7 @@ export interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thu
   policy: DataFacePolicy & {
     naming?: NameBoundary;
     /** 缩略图：不给 = 无缩略图（WXHW 2.0）。peek 从 store getPeek 读 app 域 entry（WeebPaint: Thumbnails/thumbnail.png）。 */
-    thumbs?: { fetch: (name: string, source: ThumbSource) => Promise<Blob>; store?: ThumbStore; dbName?: string; galleryId?: () => string };
+    thumbs?: { fetch: (name: string, source: ThumbSource) => Promise<Blob>; store?: ThumbStore; dbName?: string; galleryId?: () => string; /** 0.2.1：哪些文档有缩略图可取（WXHW：只有书）。 */ has?: (fullName: string) => boolean };
   };
   text?: { t?: (key: GalleryTextKey, params?: Record<string, string | number>) => string | null | undefined; lang?: GalleryLang };
   deviceKv?: DeviceKv;
@@ -33,6 +33,6 @@ export function createGallery(el: HTMLElement, deps: CreateGalleryDeps): Gallery
     const full = naming?.full ?? ((b: string) => b);
     thumbs = createThumbCache({ store, fetch: tp.fetch, keyOf: (name) => thumbKeyFor(tp.galleryId?.() ?? "default", full(name)), report: (e) => deps.reportError(e, "log") });
   }
-  const handle = mountGalleryScreen(el, { ...deps, naming, store: deps.store, data, thumbs: thumbs ?? undefined });
+  const handle = mountGalleryScreen(el, { ...deps, naming, store: deps.store, data, thumbs: thumbs ?? undefined, hasThumb: deps.hasThumb ?? deps.policy.thumbs?.has });
   return { handle, data, thumbs };
 }

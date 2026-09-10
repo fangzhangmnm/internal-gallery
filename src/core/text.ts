@@ -97,6 +97,7 @@ export const GALLERY_TEXT = {
   "gal.loc.cloud": { zh: "云端", en: "Cloud", ja: "クラウド" },
   "gal.loc.local": { zh: "本地", en: "Local", ja: "ローカル" },
   "gal.lockedThumb": { zh: "已加密 —— 点锁解锁预览", en: "Encrypted — tap lock to unlock preview", ja: "暗号化済み — ロックをタップしてプレビュー" },
+  "gal.tile.active": { zh: "编辑中", en: "Editing", ja: "編集中" },
   "gal.more": { zh: "更多操作", en: "More actions", ja: "その他の操作" },
   "gal.moveTo": { zh: "移动到…", en: "Move to…", ja: "移動…" },
   "gal.note.empty": { zh: "名字不能空", en: "Name can’t be empty", ja: "名前は空にできません" },

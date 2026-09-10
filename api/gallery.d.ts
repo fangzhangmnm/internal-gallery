@@ -286,7 +286,8 @@ export declare interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data
             fetch: (name: string, source: ThumbSource) => Promise<Blob>;
             store?: ThumbStore;
             dbName?: string;
-            galleryId?: () => string;
+            galleryId?: () => string; /** 0.2.1：哪些文档有缩略图可取（WXHW：只有书）。 */
+            has?: (fullName: string) => boolean;
         };
     };
     text?: {
@@ -958,6 +959,11 @@ export declare const GALLERY_TEXT: {
         readonly zh: "已加密 —— 点锁解锁预览";
         readonly en: "Encrypted — tap lock to unlock preview";
         readonly ja: "暗号化済み — ロックをタップしてプレビュー";
+    };
+    readonly "gal.tile.active": {
+        readonly zh: "编辑中";
+        readonly en: "Editing";
+        readonly ja: "編集中";
     };
     readonly "gal.more": {
         readonly zh: "更多操作";
@@ -2061,6 +2067,8 @@ export declare interface GalleryScreenDeps {
     tile?: {
         aspect?: "1/1" | "2/3";
     };
+    /** 0.2.1：这份文档有没有缩略图可取（WXHW：txt 稿没有 → 不去尾读、加密 txt 不显锁图标）。不给 = 全部都有（WeebPaint）。 */
+    hasThumb?: (fullName: string) => boolean;
     naming?: NameBoundary;
     isZipDoc?: (fullName: string) => boolean;
     thumbs?: ThumbCache;

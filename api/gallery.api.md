@@ -396,7 +396,8 @@ export interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thu
             fetch: (name: string, source: ThumbSource) => Promise<Blob>;
             store?: ThumbStore;
             dbName?: string;
-            galleryId?: () => string;
+            galleryId?: () => string; /** 0.2.1：哪些文档有缩略图可取（WXHW：只有书）。 */
+            has?: (fullName: string) => boolean;
         };
     };
     // (undocumented)
@@ -1123,6 +1124,11 @@ export const GALLERY_TEXT: {
         readonly zh: "已加密 —— 点锁解锁预览";
         readonly en: "Encrypted — tap lock to unlock preview";
         readonly ja: "暗号化済み — ロックをタップしてプレビュー";
+    };
+    readonly "gal.tile.active": {
+        readonly zh: "编辑中";
+        readonly en: "Editing";
+        readonly ja: "編集中";
     };
     readonly "gal.more": {
         readonly zh: "更多操作";
@@ -2265,6 +2271,7 @@ export interface GalleryScreenDeps {
         get(): string;
         set(p: string): void;
     };
+    hasThumb?: (fullName: string) => boolean;
     // (undocumented)
     host: VerbHost;
     // (undocumented)

@@ -225,9 +225,8 @@
    其余 badge 保持 --ink-soft 灰。 */
 .gallery-tile-state-icon.b-conflictBoth { color: var(--warn); }
 .gallery-tile-state-icon.b-newerOnCloud { color: var(--accent); }
-/* "编辑中" 角标叠在第 1 行（name）右侧，可压住右端文字（用户：可重叠） */
-.gallery-tile.active .gallery-tile-name-row::after {
-  content: "编辑中";
+/* 「编辑中」角标叠在第 1 行（name）右侧，可压住右端文字（用户：可重叠）。0.2.1：文字从 CSS content 搬进模板走 i18n（gal.tile.active；WXHW 改「打开中」） */
+.gallery-tile-active-tag {
   position: absolute; right: 6px; top: 8px;
   pointer-events: none;
   font-size: 10px;

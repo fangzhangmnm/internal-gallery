@@ -55,6 +55,8 @@ export interface GalleryScreenDeps {
   };
   /** 0.2.0：卡片比例。"1/1" 方图（WeebPaint 默认）；"2/3" 竖版书封（WXHW 书库；窄屏一排三本）。 */
   tile?: { aspect?: "1/1" | "2/3" };
+  /** 0.2.1：这份文档有没有缩略图可取（WXHW：txt 稿没有 → 不去尾读、加密 txt 不显锁图标）。不给 = 全部都有（WeebPaint）。 */
+  hasThumb?: (fullName: string) => boolean;
   naming?: NameBoundary;
   isZipDoc?: (fullName: string) => boolean;
   thumbs?: ThumbCache;
@@ -98,6 +100,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
   const naming = d.naming ?? IDENTITY;
   const icon = d.ui.iconHtml;
   const phHtml = (name: string): string => d.ui.tilePlaceholderHtml?.(name) ?? "";   // 0.1.2：宿主给的占位图标；空 = 退回名字首字
+  const hasThumb = (name: string): boolean => d.hasThumb?.(name) ?? true;
   const ICON = {
     localOnly: icon("database"), cloudOnly: icon("cloud"), syncedBoth: icon("cloud-synced"), dirtyBoth: icon("cloud-upload"),
     float: icon("cloud-upload"), folder: icon("folder"), cloudBig: icon("cloud"),
@@ -127,7 +130,9 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         let png: Blob | null = null;
         if (props.encName) png = await enc.localPeekThumb(props.encName);
         else if (cloudEncBlob) png = await enc.decryptCloudPeekThumb(props.alt, cloudEncBlob);
-        if (png) { locked.value = false; setBlob(png); } else locked.value = true;
+        if (png && png.size > 0) { locked.value = false; setBlob(png); }
+        else if (enc.isUnlocked()) locked.value = false;   // 0.2.1：解锁了但这本没封面 → 占位图标，不是锁（锁只表示「解不开」）
+        else locked.value = true;
       };
       let fetchSeq = 0;
       const fetchThumb = () => {
@@ -339,6 +344,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       }
 
       const L = {
+        activeTag: t("gal.tile.active"),
         loading: t("gal.loading"), folder: t("gal.folder"), emptyFolder: t("gal.emptyFolder"), more: t("gal.more"),
         delEmptyFolder: t("gal.delEmptyFolder"), delFolderNonEmpty: t("gal.delFolderNonEmpty"), encrypted: t("enc.locked.aria"),
         divergedNote: t("gal.divergedNote"), renameKeep: t("gal.renameKeep"), discardToTrash: t("gal.discardToTrash"),
@@ -350,7 +356,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       };
       const tileTall = d.tile?.aspect === "2/3";
       return {
-        tileTall,
+        tileTall, hasThumb,
         view, folder, loading, stalled, retry, openDiag, reloadApp, openMenu, isEmpty, emptyText, L, phHtml,
         folderTiles, fileTiles, imageTiles, otherTiles, trashTiles, crumbs,
         badgeIcon, fmtMeta, ICON, toggleMenu, menuUp, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
@@ -408,8 +414,9 @@ const GALLERY_TEMPLATE = `
           </div>
 
           <div v-for="row in fileTiles" :key="row.t.name" class="gallery-tile" :class="{ active: row.t.isActive }" @click="openTile(row.item)">
-            <ThumbCell :local-thumb="row.t.hasLocalThumb ? row.item.local.thumb : null" :enc-name="row.t.encrypted ? row.t.name : null" :fetchable="!row.t.encrypted && (!!row.t.cloud || !!row.item.local)" :is-cloud="!row.item.local && !!row.t.cloud" :cloud-newer="!!row.item.cloudNewer" :thumb-token="String(row.item.local ? (row.item.local.updatedAt||0) : (row.t.cloud && row.t.cloud.lastModifiedDateTime || row.t.size || 0))" :fallback="row.t.displayName.slice(0,1) || '?'" :fallback-html="phHtml(row.t.name)" :alt="row.t.name" @unlock="onUnlock" />
+            <ThumbCell :local-thumb="row.t.hasLocalThumb ? row.item.local.thumb : null" :enc-name="row.t.encrypted && hasThumb(row.t.name) ? row.t.name : null" :fetchable="!row.t.encrypted && (!!row.t.cloud || !!row.item.local) && hasThumb(row.t.name)" :is-cloud="!row.item.local && !!row.t.cloud" :cloud-newer="!!row.item.cloudNewer" :thumb-token="String(row.item.local ? (row.item.local.updatedAt||0) : (row.t.cloud && row.t.cloud.lastModifiedDateTime || row.t.size || 0))" :fallback="row.t.displayName.slice(0,1) || '?'" :fallback-html="phHtml(row.t.name)" :alt="row.t.name" @unlock="onUnlock" />
             <div class="gallery-tile-name-row">
+              <span v-if="row.t.isActive" class="gallery-tile-active-tag">{{ L.activeTag }}</span>
               <div class="gallery-tile-name" :title="row.t.fullPath">{{ row.t.displayName }}</div>
               <div class="gallery-tile-meta">
                 <span v-if="row.t.encrypted" class="gallery-tile-state-icon enc" :title="L.encrypted" v-html="ICON.lock"></span>
