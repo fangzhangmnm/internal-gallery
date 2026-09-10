@@ -20,3 +20,4 @@ export * from "./core/boot/resume-slate.ts";
 export * from "./core/boot/boot-restore.ts";
 export * from "./core/backup/library-backup.ts";
 export * from "./core/backup/change-password.ts";
+export * from "./core/data-face.ts";

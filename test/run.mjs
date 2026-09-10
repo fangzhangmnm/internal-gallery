@@ -14,4 +14,5 @@ import "./resume-slate.test.mjs";
 import "./boot-restore.test.ts";
 import "./library-backup.test.mjs";
 import "./change-password.test.mjs";
+import "./data-face.test.mjs";
 run();

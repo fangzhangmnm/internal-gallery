@@ -1,3 +1,7 @@
+import { Item } from '@internal/store';
+import { TrashItem } from '@internal/store';
+import { WatchFolderErrorPhase } from '@internal/store';
+
 export declare function activeGalleryId(): string;
 
 export declare interface AttachmentDeps {
@@ -59,7 +63,7 @@ export declare interface BackupReport {
     overBudget: boolean;
 }
 
-export declare type BadgeKind = "syncedBoth" | "dirtyBoth" | "cloudOnly" | "localOnly" | "ghost" | "pendingGone" | "newerOnCloud" | "conflictBoth";
+export declare type BadgeKind = "syncedBoth" | "dirtyBoth" | "cloudOnly" | "localOnly" | "float" | "ghost" | "pendingGone" | "newerOnCloud" | "conflictBoth";
 
 export declare function breadcrumb(folder: string): Crumb[];
 
@@ -99,6 +103,21 @@ export declare interface CloudFile {
 export declare interface CloudFileMeta extends CloudFile {
     id?: string;
     size?: number;
+}
+
+export declare interface CloudImageItem {
+    path: string;
+    name: string;
+    size?: number;
+    lastModified?: number;
+    cached: boolean;
+}
+
+export declare interface CloudOtherItem {
+    path: string;
+    name: string;
+    size?: number;
+    lastModified?: number;
 }
 
 export declare function configureDeviceKv(kv: DeviceKv): void;
@@ -145,12 +164,57 @@ export declare function createGalleryCapability(deps: {
     onLine?: () => boolean;
 }): GalleryCapability;
 
+export declare function createGalleryDataFace(deps: {
+    store: () => DataFaceStore | null;
+    policy?: DataFacePolicy;
+}): {
+    /** 订阅当前夹：立即本地帧、云端到了同一 cb 再闪。文档 natural 倒序；图片按修改时间倒序；杂物显示不打开；子夹自然正序。 */
+    watchFolder(folder: string, cb: (snap: GallerySnapshot) => void, opts?: {
+        onError?: (err: unknown, phase: WatchFolderErrorPhase) => void;
+    }): () => void;
+    watchFolderImages(folder: string, cb: (snap: {
+        path: string;
+        images: CloudImageItem[];
+        folderNames: string[];
+    }) => void): () => void;
+    openCloudImage: (path: string) => Promise<Blob | null>;
+    /** 回收站：store 两端聚合的 TrashItem[] → TrashGItem（只元数据，无 blob）。 */
+    listTrash: () => Promise<TrashGItem[]>;
+};
+
 export declare function createGalleryRegistry(kv: RegistryKV): GalleryRegistry;
 
 export declare interface Crumb {
     label: string;
     path: string;
     current: boolean;
+}
+
+export declare interface DataFacePolicy {
+    isDoc?: (path: string) => boolean;
+    isImage?: (path: string) => boolean;
+    naming?: NameBoundary;
+}
+
+/** 数据面能看见的 store 子集（多库切换后实例会变，所以是 getter）。 */
+export declare interface DataFaceStore {
+    files: {
+        watchFolder(folder: string, cb: (snap: {
+            path: string;
+            items: Item[];
+            folders: string[];
+            complete: boolean;
+        }) => void, opts?: {
+            onError?: (err: unknown, phase: WatchFolderErrorPhase) => void;
+        }): () => void;
+        listTrash(): Promise<TrashItem[]>;
+    };
+    file(name: string, opts: {
+        isZip: false;
+        mode: "existing";
+    }): {
+        open(): Promise<Blob | null>;
+    };
 }
 
 /** 包内默认 t：zh/en 默认串。 */
@@ -278,6 +342,8 @@ export declare interface GalleryCapability {
     hasGallery(): boolean;
 }
 
+export declare type GalleryDataFace = ReturnType<typeof createGalleryDataFace>;
+
 /** 默认新建名 = yyyymmdd-hex4（家族惯例；两家 policy.defaultNewName 的默认实现）。禁「未命名」。 */
 export declare function galleryDefaultName(now?: Date): string;
 
@@ -298,6 +364,9 @@ export declare interface GalleryItem {
     cloud: CloudFile | null;
     deletedAt?: number;
 }
+
+/** store.Item{path,syncState} → GItem（gallery-view-model 的输入；全部派生自 syncState，不重推导）。 */
+export declare function galleryItemFromStoreItem(it: Item, naming?: NameBoundary): GItem;
 
 export declare type GalleryKind = "onedrive" | "folder";
 
@@ -323,6 +392,14 @@ export declare interface GalleryRegistry {
 
 /** 浏览器单例（懒开库：import 本身零 IDB 访问，node 测试 import 安全）。 */
 export declare const galleryRegistry: GalleryRegistry;
+
+export declare interface GallerySnapshot {
+    path: string;
+    items: GItem[];
+    images: CloudImageItem[];
+    others: CloudOtherItem[];
+    folderNames: string[];
+}
 
 export declare type GalleryT = (key: GalleryTextKey, params?: Record<string, string | number>) => string;
 

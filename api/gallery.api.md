@@ -4,6 +4,10 @@
 
 ```ts
 
+import { Item } from '@internal/store';
+import { TrashItem } from '@internal/store';
+import { WatchFolderErrorPhase } from '@internal/store';
+
 // @public (undocumented)
 export function activeGalleryId(): string;
 
@@ -88,7 +92,7 @@ export interface BackupReport {
 }
 
 // @public (undocumented)
-export type BadgeKind = "syncedBoth" | "dirtyBoth" | "cloudOnly" | "localOnly" | "ghost" | "pendingGone" | "newerOnCloud" | "conflictBoth";
+export type BadgeKind = "syncedBoth" | "dirtyBoth" | "cloudOnly" | "localOnly" | "float" | "ghost" | "pendingGone" | "newerOnCloud" | "conflictBoth";
 
 // @public (undocumented)
 export function breadcrumb(folder: string): Crumb[];
@@ -147,6 +151,32 @@ export interface CloudFileMeta extends CloudFile {
 }
 
 // @public (undocumented)
+export interface CloudImageItem {
+    // (undocumented)
+    cached: boolean;
+    // (undocumented)
+    lastModified?: number;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    path: string;
+    // (undocumented)
+    size?: number;
+}
+
+// @public (undocumented)
+export interface CloudOtherItem {
+    // (undocumented)
+    lastModified?: number;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    path: string;
+    // (undocumented)
+    size?: number;
+}
+
+// @public (undocumented)
 export function configureDeviceKv(kv: DeviceKv): void;
 
 // @public
@@ -193,6 +223,23 @@ export function createGalleryCapability(deps: {
 }): GalleryCapability;
 
 // @public (undocumented)
+export function createGalleryDataFace(deps: {
+    store: () => DataFaceStore | null;
+    policy?: DataFacePolicy;
+}): {
+    watchFolder(folder: string, cb: (snap: GallerySnapshot) => void, opts?: {
+        onError?: (err: unknown, phase: WatchFolderErrorPhase) => void;
+    }): () => void;
+    watchFolderImages(folder: string, cb: (snap: {
+        path: string;
+        images: CloudImageItem[];
+        folderNames: string[];
+    }) => void): () => void;
+    openCloudImage: (path: string) => Promise<Blob | null>;
+    listTrash: () => Promise<TrashGItem[]>;
+};
+
+// @public (undocumented)
 export function createGalleryRegistry(kv: RegistryKV): GalleryRegistry;
 
 // @public (undocumented)
@@ -203,6 +250,39 @@ export interface Crumb {
     label: string;
     // (undocumented)
     path: string;
+}
+
+// @public (undocumented)
+export interface DataFacePolicy {
+    // (undocumented)
+    isDoc?: (path: string) => boolean;
+    // (undocumented)
+    isImage?: (path: string) => boolean;
+    // (undocumented)
+    naming?: NameBoundary;
+}
+
+// @public
+export interface DataFaceStore {
+    // (undocumented)
+    file(name: string, opts: {
+        isZip: false;
+        mode: "existing";
+    }): {
+        open(): Promise<Blob | null>;
+    };
+    // (undocumented)
+    files: {
+        watchFolder(folder: string, cb: (snap: {
+            path: string;
+            items: Item[];
+            folders: string[];
+            complete: boolean;
+        }) => void, opts?: {
+            onError?: (err: unknown, phase: WatchFolderErrorPhase) => void;
+        }): () => void;
+        listTrash(): Promise<TrashItem[]>;
+    };
 }
 
 // @public
@@ -365,6 +445,9 @@ export interface GalleryCapability {
     hasGallery(): boolean;
 }
 
+// @public (undocumented)
+export type GalleryDataFace = ReturnType<typeof createGalleryDataFace>;
+
 // @public
 export function galleryDefaultName(now?: Date): string;
 
@@ -400,6 +483,9 @@ export interface GalleryItem {
     name: string;
 }
 
+// @public
+export function galleryItemFromStoreItem(it: Item, naming?: NameBoundary): GItem;
+
 // @public (undocumented)
 export type GalleryKind = "onedrive" | "folder";
 
@@ -430,6 +516,20 @@ export interface GalleryRegistry {
 
 // @public
 export const galleryRegistry: GalleryRegistry;
+
+// @public (undocumented)
+export interface GallerySnapshot {
+    // (undocumented)
+    folderNames: string[];
+    // (undocumented)
+    images: CloudImageItem[];
+    // (undocumented)
+    items: GItem[];
+    // (undocumented)
+    others: CloudOtherItem[];
+    // (undocumented)
+    path: string;
+}
 
 // @public (undocumented)
 export type GalleryT = (key: GalleryTextKey, params?: Record<string, string | number>) => string;

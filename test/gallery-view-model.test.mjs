@@ -145,3 +145,20 @@ describe("gallery-view-model · tileFor 去压扁（newer-on-cloud / conflict）
     eq(t.badge, "ghost");
   });
 });
+
+describe("gallery-view-model · 第 9 个徽章 float（2026-09-09 补齐 store SyncState）", () => {
+  const base = { name: "a", cloud: null, local: { name: "a" } };
+  it("仅本地 ∧ dirty ∧ 已登录 → float（不再压成 localOnly）", () => {
+    const tile = tileFor({ ...base, dirty: true }, { signedIn: true, activeName: null });
+    eq(tile.badge, "float");
+    assert(/unsynced|never uploaded/i.test(tile.badgeTitle), tile.badgeTitle);
+  });
+  it("仅本地 ∧ clean → localOnly；未登录 → localOnly（本地）", () => {
+    eq(tileFor({ ...base, dirty: false }, { signedIn: true, activeName: null }).badge, "localOnly");
+    eq(tileFor({ ...base, dirty: true }, { signedIn: false, activeName: null }).badge, "localOnly");
+  });
+  it("ghost / pendingGone 仍优先于 float", () => {
+    eq(tileFor({ ...base, dirty: true, ghost: true }, { signedIn: true, activeName: null }).badge, "ghost");
+    eq(tileFor({ ...base, dirty: true, pendingGone: true }, { signedIn: true, activeName: null }).badge, "pendingGone");
+  });
+});

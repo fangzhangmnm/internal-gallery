@@ -43,7 +43,7 @@ export interface GItem extends Omit<GalleryItem, "local" | "cloud"> {
 }
 
 // 文件 tile 的同步徽章（图标 SVG 在组件 template 里按 kind 渲）。ghost = cloud-gone dirty 孤儿；pendingGone = cloud-gone clean（grace 内）。
-export type BadgeKind = "syncedBoth" | "dirtyBoth" | "cloudOnly" | "localOnly" | "ghost" | "pendingGone" | "newerOnCloud" | "conflictBoth";
+export type BadgeKind = "syncedBoth" | "dirtyBoth" | "cloudOnly" | "localOnly" | "float" | "ghost" | "pendingGone" | "newerOnCloud" | "conflictBoth";   // 9 值 = store SyncState 一一对应（2026-09-09 补 float：从未同步 ∧ 有编辑）
 
 export interface GalleryTile {
   name: string;          // 全 path-name（key / 移动改名用）
@@ -84,6 +84,9 @@ export function tileFor(
     else { badge = "syncedBoth"; badgeTitle = t("gv.badge.syncedBoth"); }
   } else if (isCloud) {
     badge = "cloudOnly"; badgeTitle = t("gv.badge.cloudOnly");
+  } else if (opts.signedIn && item.dirty) {
+    // float（store SyncState 第 9 值）：从未同步 ∧ 有编辑——离线新建改了没上过云。WeebPaint 原视图模型压成 localOnly，2026-09-09 补齐。
+    badge = "float"; badgeTitle = t("gv.badge.float");
   } else {
     badge = "localOnly"; badgeTitle = opts.signedIn ? t("gv.badge.localOnly") : t("gv.badge.localPlain");
   }
