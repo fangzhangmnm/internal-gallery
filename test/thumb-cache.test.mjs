@@ -32,3 +32,21 @@ describe("thumb-cache · token 命中 / miss 拉取 / 拉不到退旧图但不�
     eq(thumbKeyFor("default", "x.ora"), "x.ora");
   });
 });
+
+describe("thumb-cache · 0.2.2 否定结果进缓存（null = 确定没有；抛 = 未知不缓存）", () => {
+  it("fetch 返 null → 写缓存 {token, blob:null}；同 token 再取命中不重拉；token 变才重拉", async () => {
+    let fetches = 0; const store = memoryThumbStore();
+    const c = createThumbCache({ store, fetch: async () => { fetches++; return null; }, keyOf: (n) => `${n}.zip` });
+    const a = await c.getOrFetch("book", "t1", "local"); eq(a.blob, null); eq(a.fromCache, false);
+    await new Promise((r) => setTimeout(r, 0));
+    const b = await c.getOrFetch("book", "t1", "local"); eq(b.blob, null); eq(b.fromCache, true); eq(fetches, 1);
+    const d = await c.getOrFetch("book", "t2", "cloud"); eq(d.fromCache, false); eq(fetches, 2);
+  });
+  it("fetch 抛（未知）→ 不写缓存；有旧否定值就退旧值", async () => {
+    let fetches = 0; const store = memoryThumbStore();
+    const c = createThumbCache({ store, fetch: async () => { fetches++; if (fetches === 1) return null; throw new Error("offline"); }, keyOf: (n) => n });
+    await c.getOrFetch("x", "t1", "local"); await new Promise((r) => setTimeout(r, 0));
+    const r = await c.getOrFetch("x", "t2", "cloud"); eq(r.blob, null); eq(r.fromCache, true); eq(c.stats.errors, 1);
+    const again = await c.read("x"); eq(again.token, "t1", "旧否定值没被覆盖");
+  });
+});

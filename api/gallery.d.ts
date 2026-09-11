@@ -99,7 +99,7 @@ export declare function breadcrumb(folder: string): Crumb[];
 
 export declare interface CachedThumb {
     token: string;
-    blob: Blob;
+    blob: Blob | null;
     at: number;
 }
 
@@ -283,7 +283,7 @@ export declare interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data
         naming?: NameBoundary;
         /** 缩略图：不给 = 无缩略图（WXHW 2.0）。peek 从 store getPeek 读 app 域 entry（WeebPaint: Thumbnails/thumbnail.png）。 */
         thumbs?: {
-            fetch: (name: string, source: ThumbSource) => Promise<Blob>;
+            fetch: (name: string, source: ThumbSource) => Promise<Blob | null>;
             store?: ThumbStore;
             dbName?: string;
             galleryId?: () => string; /** 0.2.1：哪些文档有缩略图可取（WXHW：只有书）。 */
@@ -2442,11 +2442,11 @@ export declare const THUMB_PALETTE_COLORS = 256;
 
 export declare interface ThumbCache {
     read(name: string): Promise<CachedThumb | null>;
-    write(name: string, token: string, blob: Blob): Promise<void>;
+    write(name: string, token: string, blob: Blob | null): Promise<void>;
     invalidate(name: string): Promise<void>;
     onInvalidated(fn: (key: string) => void): () => void;
     getOrFetch(name: string, token: string, source: ThumbSource): Promise<{
-        blob: Blob;
+        blob: Blob | null;
         fromCache: boolean;
     }>;
     clear(): Promise<number>;
@@ -2462,8 +2462,8 @@ export declare interface ThumbCache {
 
 export declare interface ThumbCacheDeps {
     store: ThumbStore;
-    /** 真取图（app 域：ora 的 Thumbnails/thumbnail.png 经 store getPeek；WXHW 以后自定）。取不到 → 抛。 */
-    fetch: (name: string, source: ThumbSource) => Promise<Blob>;
+    /** 真取图（app 域：ora 的 Thumbnails/thumbnail.png 经 store getPeek）。null = 确定没有（缓存）；抛 = 未知（不缓存）。 */
+    fetch: (name: string, source: ThumbSource) => Promise<Blob | null>;
     /** 裸名 → 缓存 key（store 身份 + 多库前缀）。 */
     keyOf: (name: string) => string;
     report?: (err: unknown) => void;

@@ -14,7 +14,7 @@ export interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thu
   policy: DataFacePolicy & {
     naming?: NameBoundary;
     /** 缩略图：不给 = 无缩略图（WXHW 2.0）。peek 从 store getPeek 读 app 域 entry（WeebPaint: Thumbnails/thumbnail.png）。 */
-    thumbs?: { fetch: (name: string, source: ThumbSource) => Promise<Blob>; store?: ThumbStore; dbName?: string; galleryId?: () => string; /** 0.2.1：哪些文档有缩略图可取（WXHW：只有书）。 */ has?: (fullName: string) => boolean };
+    thumbs?: { /** null = 确定没有缩略图（进缓存、显示占位）；抛 = 未知（不缓存；云端-only 显示云）。 */ fetch: (name: string, source: ThumbSource) => Promise<Blob | null>; store?: ThumbStore; dbName?: string; galleryId?: () => string; /** 0.2.1：哪些文档有缩略图可取（WXHW：只有书）。 */ has?: (fullName: string) => boolean };
   };
   text?: { t?: (key: GalleryTextKey, params?: Record<string, string | number>) => string | null | undefined; lang?: GalleryLang };
   deviceKv?: DeviceKv;

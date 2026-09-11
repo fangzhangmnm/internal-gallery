@@ -1,6 +1,6 @@
 {
   "name": "@internal/gallery",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "PWA 家族图库库：文件管理 + 多库路由 + card view 一屏（WeebPaint 行为 = spec；DocHost 端口切开 gallery↔editor 双向边）",
   "type": "module",
   "license": "MIT",

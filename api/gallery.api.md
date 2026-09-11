@@ -144,7 +144,7 @@ export interface CachedThumb {
     // (undocumented)
     at: number;
     // (undocumented)
-    blob: Blob;
+    blob: Blob | null;
     // (undocumented)
     token: string;
 }
@@ -393,7 +393,7 @@ export interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thu
     policy: DataFacePolicy & {
         naming?: NameBoundary;
         thumbs?: {
-            fetch: (name: string, source: ThumbSource) => Promise<Blob>;
+            fetch: (name: string, source: ThumbSource) => Promise<Blob | null>;
             store?: ThumbStore;
             dbName?: string;
             galleryId?: () => string; /** 0.2.1：哪些文档有缩略图可取（WXHW：只有书）。 */
@@ -2756,7 +2756,7 @@ export interface ThumbCache {
     };
     // (undocumented)
     getOrFetch(name: string, token: string, source: ThumbSource): Promise<{
-        blob: Blob;
+        blob: Blob | null;
         fromCache: boolean;
     }>;
     // (undocumented)
@@ -2772,12 +2772,12 @@ export interface ThumbCache {
         errors: number;
     };
     // (undocumented)
-    write(name: string, token: string, blob: Blob): Promise<void>;
+    write(name: string, token: string, blob: Blob | null): Promise<void>;
 }
 
 // @public (undocumented)
 export interface ThumbCacheDeps {
-    fetch: (name: string, source: ThumbSource) => Promise<Blob>;
+    fetch: (name: string, source: ThumbSource) => Promise<Blob | null>;
     keyOf: (name: string) => string;
     // (undocumented)
     now?: () => number;

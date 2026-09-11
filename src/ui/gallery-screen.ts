@@ -139,7 +139,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         if (!d.thumbs) return;   // 无缩略图政策（WXHW 2.0）→ 保持占位
         const seq = ++fetchSeq;
         d.thumbs.getOrFetch(props.alt, props.thumbToken, props.cloudNewer ? "cloud" : "local")
-          .then(({ blob }) => { if (seq !== fetchSeq) return; showCloud.value = false; if (enc?.isEncryptedPeekBlob(blob)) { cloudEncBlob = blob; return tryDecrypt(); } setBlob(blob); })
+          .then(({ blob }) => { if (seq !== fetchSeq) return; showCloud.value = false; if (!blob) return; /* 0.2.2：确定没缩略图 → 占位图标（书），不是云 */ if (enc?.isEncryptedPeekBlob(blob)) { cloudEncBlob = blob; return tryDecrypt(); } setBlob(blob); })
           .catch((err: unknown) => d.reportError(new Error("[gallery] thumb: " + String(err)), "log"));
       };
       onMounted(() => {
