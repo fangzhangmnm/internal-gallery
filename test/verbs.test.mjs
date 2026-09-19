@@ -11,6 +11,7 @@ function mk({ file = {}, files = {}, inputs = [], confirms = [], active = null, 
     getEncryptedBlob: async () => file.enc ?? null, open: async () => file.plain ?? null,
     save: async (b, o) => { calls.push(["save", name, opts, o]); },
     encrypt: async () => file.encrypt ? file.encrypt() : { status: "ok" }, decrypt: async () => ({ status: "ok" }),
+    keepOffline: async () => { calls.push(["keepOffline", name]); if (file.keepOffline) return file.keepOffline(); },
   }; };
   const store = { file: fileObj, files: { nameOccupied: async () => false, deleteFolder: async (p) => files.deleteFolder?.(p), restoreTrash: async (o) => { calls.push(["restore", o]); return files.restore ? files.restore(o) : {}; }, purgeTrash: async (o) => { calls.push(["purge", o]); }, emptyTrash: async (o) => files.emptyTrash ? files.emptyTrash(o) : { failed: [] } } };
   const host = { signedIn: () => signedIn, online: () => online, activeName: () => active,
@@ -113,5 +114,19 @@ describe("verbs · encrypt（首次创建的密码只有加密成功才算数）
     v = createGalleryVerbs({ store: () => ({ file: () => ({ encrypt: async () => ({ status: "ok" }) }), files: {} }), host: base.host, doc: { renameActive: async () => null, setName() {}, push: async () => {}, unload: async () => {}, exit: async () => {}, dropCheckpoint() {} }, encryption: enc, thumbs: { invalidate: () => log.push("inv") }, onEncryptionChanged: () => log.push("changed") });
     await v.encryptItem(item("a"));
     eq(log.join(","), "set,inv,changed");
+  });
+});
+
+describe("verbs · keepOffline（0.3.0，JRB：纯云端件不打开就囤一份）", () => {
+  it("调 VerbFile.keepOffline（全名）、经 busy、成功 status 已留离线", async () => {
+    const { verbs, statuses, calls } = mk();
+    await verbs.keepOffline(item("猫", { local: null }));
+    eq(calls.filter((c) => c[0] === "keepOffline").pop()[1], "猫.ora", "边界转全名");
+    eq(statuses.pop()[0], t("gal.st.keptOffline", { name: "猫" }));
+  });
+  it("失败走 status（isError）不抛", async () => {
+    const { verbs, statuses } = mk({ file: { keepOffline: async () => { throw new Error("offline"); } } });
+    await verbs.keepOffline(item("猫", { local: null }));
+    const last = statuses.pop(); eq(last[1], true); eq(last[0], t("gal.st.keepOfflineFail", { e: "offline" }));
   });
 });

@@ -53,8 +53,15 @@ export interface GalleryScreenDeps {
     /** 0.1.2：无缩略图时卡片占位内容（HTML，通常是一枚图标）。不给 → 退回名字首字（WeebPaint 默认；WXHW 2026-09-10 user「所有的预览图都是 2……不要从名字生成」→ 宿主给 book/file 图标）。 */
     tilePlaceholderHtml?: (name: string) => string | undefined;
   };
-  /** 0.2.0：卡片比例。"1/1" 方图（WeebPaint 默认）；"2/3" 竖版书封（WXHW 书库；窄屏一排三本）。 */
-  tile?: { aspect?: "1/1" | "2/3" };
+  /** 0.2.0：卡片比例。"1/1" 方图（WeebPaint 默认）；"2/3" 竖版书封（WXHW 书库；窄屏一排三本）。
+   *  0.3.0（JRB 第三消费者，提案 ai-docs/20260919-proposal-list-view.md）：layout "list" = 一行一件、名字整行（最多折两行不截断）、副标题一行、右侧 ⋯；
+   *  subtitle / marker = 宿主 hook（JRB：状态头 / 未读点）。全部可选，不给 = 0.2.2 行为。 */
+  tile?: {
+    aspect?: "1/1" | "2/3";
+    layout?: "cards" | "list";
+    subtitle?: (item: GItem) => string | null | undefined;
+    marker?: (item: GItem) => "unread" | null | undefined;
+  };
   /** 0.2.1：这份文档有没有缩略图可取（WXHW：txt 稿没有 → 不去尾读、加密 txt 不显锁图标）。不给 = 全部都有（WeebPaint）。 */
   hasThumb?: (fullName: string) => boolean;
   naming?: NameBoundary;
@@ -81,12 +88,16 @@ export interface GalleryHandle {
   emptyTrash(scope?: "local" | "cloud" | "both"): void;
   requestUnlock(): Promise<boolean>;
   invalidateEncrypted(name: string): void;
+  /** 0.3.0：布局即时切换（用户偏好记不记住归宿主）。 */
+  setLayout(l: "cards" | "list"): void;
+  getLayout(): "cards" | "list";
   unmount(): void;
 }
 interface GalleryVM {
   reload(): void; setView(v: "files" | "trash"): void; view: "files" | "trash";
   setFolder(p: string): void; hydrateFolder(p: string): void; folder: string;
   emptyTrash(scope?: "local" | "cloud" | "both"): void; requestUnlock(): Promise<boolean>; invalidateEncrypted(name: string): void;
+  layout: "cards" | "list"; setLayout(l: "cards" | "list"): void;
 }
 const PIXELATED_THUMB_MAX_EDGE = 128;
 function thumbLoadPixelated(e: Event): boolean {
@@ -209,6 +220,9 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
     components: { ThumbCell, ImageThumbCell },
     setup() {
       const view = ref<"files" | "trash">("files");
+      const layout = ref<"cards" | "list">(d.tile?.layout ?? "cards");
+      const subtitleOf = (item: GItem): string => { try { return d.tile?.subtitle?.(item) ?? ""; } catch { return ""; } };
+      const markerOf = (item: GItem): "unread" | null => { try { return d.tile?.marker?.(item) ?? null; } catch { return null; } };
       const folder = ref<string>(safeFolder());
       const loading = ref(false);
       const data = reactive<{ files: GItem[]; images: CloudImageItem[]; others: GallerySnapshot["others"]; folderNames: string[] }>({ files: [], images: [], others: [], folderNames: [] });
@@ -286,7 +300,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       });
 
       const folderTiles = computed(() => data.folderNames.map((fn) => ({ name: fn, path: pathJoin(folder.value, fn) })));
-      const fileTiles = computed(() => data.files.map((it) => { const tile = tileFor(it, { signedIn: d.host.signedIn(), activeName: d.host.activeName(), encrypted: !!encByName[it.name] }); if (naming.display) tile.displayName = naming.display(tile.displayName); return { item: it, t: tile }; }));
+      const fileTiles = computed(() => data.files.map((it) => { const tile = tileFor(it, { signedIn: d.host.signedIn(), activeName: d.host.activeName(), encrypted: !!encByName[it.name] }); if (naming.display) tile.displayName = naming.display(tile.displayName); return { item: it, t: tile, sub: subtitleOf(it), marker: markerOf(it) }; }));
       const trashTiles = computed(() => trash.value.map((it) => ({ item: it, t: trashTileFor(it) })));
       const imageTiles = computed(() => data.images.map((im) => ({ raw: im, path: im.path, name: im.name, size: im.size || 0, time: im.lastModified || 0, token: imageThumbToken(im) })));
       const otherTiles = computed(() => data.others.map((o) => ({ path: o.path, name: o.name, size: o.size || 0, time: o.lastModified || 0 })));
@@ -312,6 +326,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const push = wrap((item: GItem) => verbs.push(item));
       const reupload = wrap((item: GItem) => verbs.reupload(item));
       const unload = wrap((item: GItem) => verbs.unload(item));
+      const keepOffline = wrap((item: GItem) => verbs.keepOffline(item));
       const del = wrap((item: GItem) => verbs.del(item));
       const deleteImage = wrap((img: CloudImageItem) => verbs.deleteImage(img));
       const folderDelete = wrap((ft: { name: string; path: string }) => verbs.folderDelete(ft));
@@ -353,14 +368,15 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         toTrash: t("gal.toTrash"), deleted: t("gal.deleted"), restore: t("gal.restore"), purge: t("gal.purge"),
         reupload: t("gal.reupload"), imageFile: t("gal.imageFile"), otherFile: t("gal.otherFile"),
         retry: t("gal.retry"), openDiag: t("gal.openDiag"), reload: t("gal.reload"),
+        keepOffline: t("gal.keepOffline"), unread: t("gal.marker.unread"),
       };
       const tileTall = d.tile?.aspect === "2/3";
       return {
-        tileTall, hasThumb,
+        tileTall, hasThumb, layout, setLayout: (l: "cards" | "list") => { layout.value = l; },
         view, folder, loading, stalled, retry, openDiag, reloadApp, openMenu, isEmpty, emptyText, L, phHtml,
         folderTiles, fileTiles, imageTiles, otherTiles, trashTiles, crumbs,
         badgeIcon, fmtMeta, ICON, toggleMenu, menuUp, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
-        openTile, openImageTile, deleteImage, rename, move, copy, push, reupload, unload, del, folderDelete, trashRestore, trashPurge, emptyTrash,
+        openTile, openImageTile, deleteImage, rename, move, copy, push, reupload, unload, keepOffline, del, folderDelete, trashRestore, trashPurge, emptyTrash,
         encryptItem, decryptItem, onUnlock, requestUnlock, hasEncryption: !!enc,
         reload, setView: (v: "files" | "trash") => { view.value = v; void reload(); },
       };
@@ -372,6 +388,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
   const vm = app.mount(el) as unknown as GalleryVM;
   return {
     refresh: () => vm.reload(), setView: (v) => vm.setView(v), getView: () => vm.view,
+    setLayout: (l) => vm.setLayout(l), getLayout: () => vm.layout,
     setFolder: (p) => vm.setFolder(p), hydrateFolder: (p) => vm.hydrateFolder(p), getFolder: () => vm.folder,
     emptyTrash: (scope) => vm.emptyTrash(scope), requestUnlock: () => vm.requestUnlock(), invalidateEncrypted: (name) => vm.invalidateEncrypted(name),
     unmount: () => app.unmount(),
@@ -387,7 +404,7 @@ const GALLERY_TEMPLATE = `
         </template>
       </div>
 
-      <div class="gallery-grid" :class="{ tall: tileTall }" v-show="!isEmpty || loading">
+      <div class="gallery-grid" :class="{ tall: tileTall, list: layout==='list' }" v-show="!isEmpty || loading">
         <div v-if="loading" class="gallery-loading">
           <template v-if="!stalled">{{ L.loading }}</template>
           <template v-else>
@@ -417,7 +434,8 @@ const GALLERY_TEMPLATE = `
             <ThumbCell :local-thumb="row.t.hasLocalThumb ? row.item.local.thumb : null" :enc-name="row.t.encrypted && hasThumb(row.t.name) ? row.t.name : null" :fetchable="!row.t.encrypted && (!!row.t.cloud || !!row.item.local) && hasThumb(row.t.name)" :is-cloud="!row.item.local && !!row.t.cloud" :cloud-newer="!!row.item.cloudNewer" :thumb-token="String(row.item.local ? (row.item.local.updatedAt||0) : (row.t.cloud && row.t.cloud.lastModifiedDateTime || row.t.size || 0))" :fallback="row.t.displayName.slice(0,1) || '?'" :fallback-html="phHtml(row.t.name)" :alt="row.t.name" @unlock="onUnlock" />
             <div class="gallery-tile-name-row">
               <span v-if="row.t.isActive" class="gallery-tile-active-tag">{{ L.activeTag }}</span>
-              <div class="gallery-tile-name" :title="row.t.fullPath">{{ row.t.displayName }}</div>
+              <div class="gallery-tile-name" :title="row.t.fullPath"><span v-if="row.marker==='unread'" class="gallery-marker unread" :title="L.unread"></span>{{ row.t.displayName }}</div>
+              <div v-if="row.sub" class="gallery-tile-sub" :title="row.sub">{{ row.sub }}</div>
               <div class="gallery-tile-meta">
                 <span v-if="row.t.encrypted" class="gallery-tile-state-icon enc" :title="L.encrypted" v-html="ICON.lock"></span>
                 <span :class="'gallery-tile-state-icon b-' + row.t.badge" :title="row.t.badgeTitle" v-html="badgeIcon(row.t.badge)"></span>
@@ -440,6 +458,7 @@ const GALLERY_TEMPLATE = `
                 <button type="button" @click="move(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#move-to-folder"/></svg><span>{{ L.moveTo }}</span></button>
                 <button type="button" @click="copy(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#copy"/></svg><span>{{ L.copy }}</span></button>
                 <button v-if="row.t.badge==='cloudOnly'" type="button" @click="openTile(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#download"/></svg><span>{{ L.pullLocal }}</span></button>
+                <button v-if="row.t.badge==='cloudOnly'" type="button" @click="keepOffline(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#local-cache"/></svg><span>{{ L.keepOffline }}</span></button>
                 <button v-if="row.t.badge==='localOnly' || row.t.badge==='float'" type="button" @click="push(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cloud-upload"/></svg><span>{{ L.pushCloud }}</span></button>
                 <button v-if="row.t.badge==='dirtyBoth' || row.t.badge==='conflictBoth'" type="button" @click="push(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cloud-upload"/></svg><span>{{ L.pushCloud }}</span></button>
                 <button v-if="row.item.local && row.item.cloud" type="button" @click="unload(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#unload-local-cache"/></svg><span>{{ L.unloadLocal }}</span></button>

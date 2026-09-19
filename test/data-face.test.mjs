@@ -53,3 +53,14 @@ describe("data-face · watchFolder 路由与排序（当前夹唯一列举面）
     assert(threw);
   });
 });
+
+describe("data-face · policy.hide（0.3.0，JRB：遗留 json / 半成品连杂物都不显示）", () => {
+  it("hide 命中的路径不进 items / images / others；不给 hide = 全显示", () => {
+    const snap = { items: [item("a.txt", "synced"), item("session.json", "synced"), item("b.txt.part", "cloud-only"), item("pic.png", "synced")], folders: [] };
+    const policy = { isDoc: (p) => /\.txt$/.test(p), isImage: (p) => /\.png$/.test(p) };
+    let got; createGalleryDataFace({ store: () => fakeStore(snap), policy: { ...policy, hide: (p) => /session\.json$|\.part$/.test(p) } }).watchFolder("", (s) => { got = s; });
+    eq(got.items.map((i) => i.name).join("|"), "a.txt"); eq(got.others.length, 0); eq(got.images.length, 1);
+    let all; createGalleryDataFace({ store: () => fakeStore(snap), policy }).watchFolder("", (s) => { all = s; });
+    eq(all.others.map((i) => i.name).join("|"), "b.txt.part|session.json", "不给 hide：半成品与遗留 json 都当杂物显示（0.2.2 行为）");
+  });
+});

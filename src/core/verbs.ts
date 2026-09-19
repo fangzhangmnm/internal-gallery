@@ -34,6 +34,8 @@ export interface VerbFile {
   save(bytes: Blob, opts: { tryPush: boolean }): Promise<unknown>;
   encrypt(o: { isOnline: () => boolean }): Promise<{ status: string }>;
   decrypt(o: { isOnline: () => boolean }): Promise<{ status: string }>;
+  /** 0.3.0：留一份离线副本（store RawFile 0.13.0 已有同名面）。 */
+  keepOffline(opts?: { onProgress?: (done: number, total: number) => void }): Promise<void>;
 }
 export interface VerbStore {
   file(name: string, opts: { isZip: boolean; mode: "new" | "existing" }): VerbFile;
@@ -144,6 +146,13 @@ export function createGalleryVerbs(d: VerbDeps) {
 
   async function push(item: GItem): Promise<void> { await d.doc.push(item); }
   async function unload(item: GItem): Promise<void> { await d.doc.unload(item); }
+  /** 0.3.0（JRB）：纯云端件「留一份离线」——不打开文档，只囤字节（读者在 wifi 下把一晚要读的先囤好）。与 pullLocal（= 打开即缓存）分工。失败走 status 不抛。 */
+  async function keepOffline(item: GItem): Promise<void> {
+    await d.host.busy(t("gal.busy.keepOffline", { name: item.name }), async () => {
+      try { await docFile(item.name).keepOffline(); d.host.status(t("gal.st.keptOffline", { name: item.name })); }
+      catch (e: unknown) { d.host.status(t("gal.st.keepOfflineFail", { e: errMsg(e) }), true); }
+    });
+  }
 
   async function reupload(item: GItem): Promise<void> {
     await d.host.busy(t("gal.busy.reupload"), async () => {
@@ -278,6 +287,6 @@ export function createGalleryVerbs(d: VerbDeps) {
     return ok;
   }
 
-  return { rename, move, moveTargets, copy, push, unload, reupload, del, deleteImage, folderDelete, trashRestore, trashPurge, emptyTrash, encryptItem, decryptItem, unlock, whereLabel };
+  return { rename, move, moveTargets, copy, push, unload, keepOffline, reupload, del, deleteImage, folderDelete, trashRestore, trashPurge, emptyTrash, encryptItem, decryptItem, unlock, whereLabel };
 }
 export type GalleryVerbs = ReturnType<typeof createGalleryVerbs>;

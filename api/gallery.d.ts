@@ -312,6 +312,7 @@ export declare function createGalleryVerbs(d: VerbDeps): {
     copy: (item: GItem, currentNames: readonly string[]) => Promise<void>;
     push: (item: GItem) => Promise<void>;
     unload: (item: GItem) => Promise<void>;
+    keepOffline: (item: GItem) => Promise<void>;
     reupload: (item: GItem) => Promise<void>;
     del: (item: GItem) => Promise<void>;
     deleteImage: (img: {
@@ -346,6 +347,9 @@ export declare interface DataFacePolicy {
     isDoc?: (path: string) => boolean;
     isImage?: (path: string) => boolean;
     naming?: NameBoundary;
+    /** 0.3.0：这些路径连杂物都不显示（JRB：v1 遗留 session.json / library.json、写入方半成品 *.part / ~* / .tmp）。不给 = 全显示。
+     *  放数据面而不是宿主过滤：帧是包算的，宿主拿不到「others」那一列。 */
+    hide?: (path: string) => boolean;
 }
 
 /** 数据面能看见的 store 子集（多库切换后实例会变，所以是 getter）。 */
@@ -760,6 +764,11 @@ export declare const GALLERY_TEXT: {
         readonly en: "Emptying {label} trash…";
         readonly ja: "{label}のゴミ箱を空に…";
     };
+    readonly "gal.busy.keepOffline": {
+        readonly zh: "正在下载「{name}」…";
+        readonly en: "Downloading “{name}”…";
+        readonly ja: "「{name}」をダウンロード中…";
+    };
     readonly "gal.busy.move": {
         readonly zh: "正在移动 {base} → {target}…";
         readonly en: "Moving {base} → {target}…";
@@ -940,6 +949,11 @@ export declare const GALLERY_TEXT: {
         readonly en: "Image";
         readonly ja: "画像";
     };
+    readonly "gal.keepOffline": {
+        readonly zh: "留一份离线";
+        readonly en: "Keep offline";
+        readonly ja: "オフライン用に保存";
+    };
     readonly "gal.loading": {
         readonly zh: "加载中…";
         readonly en: "Loading…";
@@ -964,6 +978,11 @@ export declare const GALLERY_TEXT: {
         readonly zh: "编辑中";
         readonly en: "Editing";
         readonly ja: "編集中";
+    };
+    readonly "gal.marker.unread": {
+        readonly zh: "未读";
+        readonly en: "Unread";
+        readonly ja: "未読";
     };
     readonly "gal.more": {
         readonly zh: "更多操作";
@@ -1099,6 +1118,16 @@ export declare const GALLERY_TEXT: {
         readonly zh: "纯云端作品先拉取到本地再{verb}";
         readonly en: "Pull the cloud-only artwork to local first to {verb}";
         readonly ja: "クラウドのみの作品は先にローカルへ取得してから{verb}";
+    };
+    readonly "gal.st.keepOfflineFail": {
+        readonly zh: "留离线失败：{e}";
+        readonly en: "Keep offline failed: {e}";
+        readonly ja: "オフライン保存に失敗：{e}";
+    };
+    readonly "gal.st.keptOffline": {
+        readonly zh: "已留离线：{name}";
+        readonly en: "Kept offline: {name}";
+        readonly ja: "オフライン保存済み：{name}";
     };
     readonly "gal.st.copied": {
         readonly zh: "已创建副本：{name}";
@@ -2000,6 +2029,9 @@ export declare interface GalleryHandle {
     emptyTrash(scope?: "local" | "cloud" | "both"): void;
     requestUnlock(): Promise<boolean>;
     invalidateEncrypted(name: string): void;
+    /** 0.3.0：布局即时切换（用户偏好记不记住归宿主）。 */
+    setLayout(l: "cards" | "list"): void;
+    getLayout(): "cards" | "list";
     unmount(): void;
 }
 
@@ -2063,9 +2095,14 @@ export declare interface GalleryScreenDeps {
         /** 0.1.2：无缩略图时卡片占位内容（HTML，通常是一枚图标）。不给 → 退回名字首字（WeebPaint 默认；WXHW 2026-09-10 user「所有的预览图都是 2……不要从名字生成」→ 宿主给 book/file 图标）。 */
         tilePlaceholderHtml?: (name: string) => string | undefined;
     };
-    /** 0.2.0：卡片比例。"1/1" 方图（WeebPaint 默认）；"2/3" 竖版书封（WXHW 书库；窄屏一排三本）。 */
+    /** 0.2.0：卡片比例。"1/1" 方图（WeebPaint 默认）；"2/3" 竖版书封（WXHW 书库；窄屏一排三本）。
+     *  0.3.0（JRB 第三消费者，提案 ai-docs/20260919-proposal-list-view.md）：layout "list" = 一行一件、名字整行（最多折两行不截断）、副标题一行、右侧 ⋯；
+     *  subtitle / marker = 宿主 hook（JRB：状态头 / 未读点）。全部可选，不给 = 0.2.2 行为。 */
     tile?: {
         aspect?: "1/1" | "2/3";
+        layout?: "cards" | "list";
+        subtitle?: (item: GItem) => string | null | undefined;
+        marker?: (item: GItem) => "unread" | null | undefined;
     };
     /** 0.2.1：这份文档有没有缩略图可取（WXHW：txt 稿没有 → 不去尾读、加密 txt 不显锁图标）。不给 = 全部都有（WeebPaint）。 */
     hasThumb?: (fullName: string) => boolean;
@@ -2588,6 +2625,10 @@ export declare interface VerbFile {
     }): Promise<{
         status: string;
     }>;
+    /** 0.3.0：留一份离线副本（store RawFile 0.13.0 已有同名面）。 */
+    keepOffline(opts?: {
+        onProgress?: (done: number, total: number) => void;
+    }): Promise<void>;
 }
 
 export declare interface VerbHost {

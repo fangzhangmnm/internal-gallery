@@ -426,6 +426,7 @@ export function createGalleryVerbs(d: VerbDeps): {
     copy: (item: GItem, currentNames: readonly string[]) => Promise<void>;
     push: (item: GItem) => Promise<void>;
     unload: (item: GItem) => Promise<void>;
+    keepOffline: (item: GItem) => Promise<void>;
     reupload: (item: GItem) => Promise<void>;
     del: (item: GItem) => Promise<void>;
     deleteImage: (img: {
@@ -463,6 +464,7 @@ export interface Crumb {
 
 // @public (undocumented)
 export interface DataFacePolicy {
+    hide?: (path: string) => boolean;
     // (undocumented)
     isDoc?: (path: string) => boolean;
     // (undocumented)
@@ -925,6 +927,11 @@ export const GALLERY_TEXT: {
         readonly en: "Emptying {label} trash…";
         readonly ja: "{label}のゴミ箱を空に…";
     };
+    readonly "gal.busy.keepOffline": {
+        readonly zh: "正在下载「{name}」…";
+        readonly en: "Downloading “{name}”…";
+        readonly ja: "「{name}」をダウンロード中…";
+    };
     readonly "gal.busy.move": {
         readonly zh: "正在移动 {base} → {target}…";
         readonly en: "Moving {base} → {target}…";
@@ -1105,6 +1112,11 @@ export const GALLERY_TEXT: {
         readonly en: "Image";
         readonly ja: "画像";
     };
+    readonly "gal.keepOffline": {
+        readonly zh: "留一份离线";
+        readonly en: "Keep offline";
+        readonly ja: "オフライン用に保存";
+    };
     readonly "gal.loading": {
         readonly zh: "加载中…";
         readonly en: "Loading…";
@@ -1129,6 +1141,11 @@ export const GALLERY_TEXT: {
         readonly zh: "编辑中";
         readonly en: "Editing";
         readonly ja: "編集中";
+    };
+    readonly "gal.marker.unread": {
+        readonly zh: "未读";
+        readonly en: "Unread";
+        readonly ja: "未読";
     };
     readonly "gal.more": {
         readonly zh: "更多操作";
@@ -1264,6 +1281,16 @@ export const GALLERY_TEXT: {
         readonly zh: "纯云端作品先拉取到本地再{verb}";
         readonly en: "Pull the cloud-only artwork to local first to {verb}";
         readonly ja: "クラウドのみの作品は先にローカルへ取得してから{verb}";
+    };
+    readonly "gal.st.keepOfflineFail": {
+        readonly zh: "留离线失败：{e}";
+        readonly en: "Keep offline failed: {e}";
+        readonly ja: "オフライン保存に失敗：{e}";
+    };
+    readonly "gal.st.keptOffline": {
+        readonly zh: "已留离线：{name}";
+        readonly en: "Kept offline: {name}";
+        readonly ja: "オフライン保存済み：{name}";
     };
     readonly "gal.st.copied": {
         readonly zh: "已创建副本：{name}";
@@ -2176,6 +2203,8 @@ export interface GalleryHandle {
     // (undocumented)
     getFolder(): string;
     // (undocumented)
+    getLayout(): "cards" | "list";
+    // (undocumented)
     getView(): "files" | "trash";
     // (undocumented)
     hydrateFolder(path: string): void;
@@ -2187,6 +2216,7 @@ export interface GalleryHandle {
     requestUnlock(): Promise<boolean>;
     // (undocumented)
     setFolder(path: string): void;
+    setLayout(l: "cards" | "list"): void;
     // (undocumented)
     setView(v: "files" | "trash"): void;
     // (undocumented)
@@ -2295,6 +2325,9 @@ export interface GalleryScreenDeps {
     thumbs?: ThumbCache;
     tile?: {
         aspect?: "1/1" | "2/3";
+        layout?: "cards" | "list";
+        subtitle?: (item: GItem) => string | null | undefined;
+        marker?: (item: GItem) => "unread" | null | undefined;
     };
     // (undocumented)
     ui: {
@@ -2945,6 +2978,9 @@ export interface VerbFile {
     }>;
     // (undocumented)
     getEncryptedBlob(): Promise<Blob | null>;
+    keepOffline(opts?: {
+        onProgress?: (done: number, total: number) => void;
+    }): Promise<void>;
     // (undocumented)
     open(): Promise<Blob | null>;
     // (undocumented)
