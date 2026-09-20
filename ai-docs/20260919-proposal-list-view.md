@@ -3,6 +3,7 @@
 > 作者：Claude Fable 5.1（claude-fable-5-1）· created 20260919 · as-of 0.2.2 · 状态：**待 user 过目**；过目通过前不写版本号、不 release（本包 CLAUDE.md 版本纪律）。
 > 起因：JRB 现代化（`../../20260523 JustReadBooks/ai-docs/20260919-modernization-plan.md` §4.4）。user 2026-09-19：「关键是接gallery，而不是手搓。也许gallery需要支持第二种UI，然后考虑gallery变成全屏的，这样长书名也能显示」。
 > 纪律：**WeebPaint 行为是 spec，默认值 = 现行为，WeebPaint / WXHW 零改动**（全部新字段可选）。
+> **0.3.2 回写（2026-09-19 深夜，user「gallery 是前端…查一下还有什么切分错误的」）**：`policy.hide`（0.3.0）与 `onRenamed`（0.3.1）两个 hook **撤销**——「夹里有什么」是 store 列举面（`createStore({ hiddenName })`，store 0.14.0）；改名是身份变更、事件源在 store（`store.files.onRenamed`）。图库只画、只发起，不当数据源。
 
 ## 0. 一句话
 

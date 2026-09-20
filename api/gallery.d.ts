@@ -347,9 +347,6 @@ export declare interface DataFacePolicy {
     isDoc?: (path: string) => boolean;
     isImage?: (path: string) => boolean;
     naming?: NameBoundary;
-    /** 0.3.0：这些路径连杂物都不显示（JRB：v1 遗留 session.json / library.json、写入方半成品 *.part / ~* / .tmp）。不给 = 全显示。
-     *  放数据面而不是宿主过滤：帧是包算的，宿主拿不到「others」那一列。 */
-    hide?: (path: string) => boolean;
 }
 
 /** 数据面能看见的 store 子集（多库切换后实例会变，所以是 getter）。 */
@@ -2123,8 +2120,6 @@ export declare interface GalleryScreenDeps {
     reportError: (err: unknown, level?: "error" | "warning" | "info" | "log") => void;
     openDiag?: () => void;
     reloadApp?: () => void;
-    /** 0.3.1：改名 / 移动成功后（裸名 from → to）通知宿主搬伴生数据（JRB：阅读位置 / 切章规则按路径键）。 */
-    onRenamed?: (from: string, to: string) => void;
 }
 
 export declare interface GallerySnapshot {
@@ -2578,8 +2573,6 @@ export declare interface VerbDeps {
     };
     onEncryptionChanged?: (name: string) => void;
     encryption?: VerbEncryption;
-    /** 0.3.1：身份变了（改名 / 移动成功后，裸名 from → to）。宿主按路径键的伴生数据（JRB：阅读位置 / 切章规则）跟着搬；不给 = 不通知。活动文档另有 doc.setName。 */
-    onRenamed?: (from: string, to: string) => void;
 }
 
 /** 编辑器侧（DocHost 的动词子集）：只管**当前打开**的那份。 */

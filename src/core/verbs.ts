@@ -64,8 +64,7 @@ export interface VerbDeps {
   thumbs?: { invalidate(name: string): Promise<void> | void };
   onEncryptionChanged?: (name: string) => void;
   encryption?: VerbEncryption;
-  /** 0.3.1：身份变了（改名 / 移动成功后，裸名 from → to）。宿主按路径键的伴生数据（JRB：阅读位置 / 切章规则）跟着搬；不给 = 不通知。活动文档另有 doc.setName。 */
-  onRenamed?: (from: string, to: string) => void;
+  // （0.3.1 的 onRenamed hook 0.3.2 撤：改名是身份变更、事件源在 store（`store.files.onRenamed`，0.14.0）；图库只是发起改名的前端——user 2026-09-19「gallery 是前端」。）
 }
 const IDENTITY: NameBoundary = { bare: (s) => s, full: (b) => b };
 const errMsg = (e: unknown) => String((e as { message?: unknown })?.message || e);
@@ -95,7 +94,6 @@ export function createGalleryVerbs(d: VerbDeps) {
         try {
           const r = await docFile(item.name).tryMove(naming.full(trimmed));   // 占用检查内化在 store.tryMove，不动字节直接返错
           if (!r.ok) return { taken: whereLabel(r.where) };
-          d.onRenamed?.(item.name, trimmed);
           d.host.status(t("gal.st.renamed", { to: trimmed }));
           return { ok: true };
         } catch (e: unknown) { return { error: errMsg(e) }; }
@@ -127,7 +125,6 @@ export function createGalleryVerbs(d: VerbDeps) {
         const r = await docFile(item.name).tryMove(naming.full(newName));
         if (!r.ok) { d.host.status(t("gal.st.nameTakenTarget", { loc: whereLabel(r.where), base }), true); return; }
         if (item.name === d.host.activeName()) d.doc.setName(newName);
-        d.onRenamed?.(item.name, newName);
         d.host.status(t("gal.st.moved", { target: target || t("gal.root") }));
       } catch (e: unknown) { d.host.status(t("gal.st.moveFail", { e: errMsg(e) }), true); }
     });

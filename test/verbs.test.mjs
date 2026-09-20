@@ -2,7 +2,7 @@ import { describe, it, eq, assert } from "./runner.mjs";
 import { createGalleryVerbs } from "../src/core/verbs.ts";
 import { t } from "../src/core/text.ts";
 
-function mk({ file = {}, files = {}, inputs = [], confirms = [], active = null, signedIn = true, online = true, onRenamed } = {}) {
+function mk({ file = {}, files = {}, inputs = [], confirms = [], active = null, signedIn = true, online = true } = {}) {
   const statuses = [], calls = [];
   const fileObj = (name, opts) => { calls.push(["file", name, opts]); return {
     tryMove: async (to) => { calls.push(["tryMove", name, to]); return file.tryMove ? file.tryMove(to) : { ok: true }; },
@@ -18,7 +18,7 @@ function mk({ file = {}, files = {}, inputs = [], confirms = [], active = null, 
     confirm: async () => (confirms.length ? confirms.shift() : true), input: async (title, def) => { calls.push(["input", title, def]); return inputs.length ? inputs.shift() : null; },
     chooseFolder: async (_t, _m, opts) => (host._pick ? host._pick(opts) : opts[0]?.value ?? null), status: (m, e) => statuses.push([m, !!e]), busy: async (_l, fn) => fn() };
   const doc = { renameActive: async () => "x", setName: (n) => calls.push(["setName", n]), push: async () => calls.push(["push"]), unload: async () => {}, exit: async () => calls.push(["exit"]), dropCheckpoint: (n) => calls.push(["drop", n]) };
-  const verbs = createGalleryVerbs({ store: () => store, host, doc, naming: { bare: (s) => s.replace(/\.ora$/, ""), full: (b) => `${b}.ora` }, ...(onRenamed ? { onRenamed } : {}) });
+  const verbs = createGalleryVerbs({ store: () => store, host, doc, naming: { bare: (s) => s.replace(/\.ora$/, ""), full: (b) => `${b}.ora` } });
   return { verbs, statuses, calls, host };
 }
 const item = (name, extra = {}) => ({ name, local: { name }, cloud: { path: name }, ...extra });
@@ -128,23 +128,5 @@ describe("verbs · keepOffline（0.3.0，JRB：纯云端件不打开就囤一份
     const { verbs, statuses } = mk({ file: { keepOffline: async () => { throw new Error("offline"); } } });
     await verbs.keepOffline(item("猫", { local: null }));
     const last = statuses.pop(); eq(last[1], true); eq(last[0], t("gal.st.keepOfflineFail", { e: "offline" }));
-  });
-});
-
-describe("verbs · onRenamed（0.3.1，JRB：按路径键的阅读位置 / 切章规则跟着搬）", () => {
-  it("改名成功 → onRenamed(from, to)；撞名不通知", async () => {
-    const seen = [];
-    const { verbs } = mk({ inputs: ["新"], onRenamed: (f, t) => seen.push([f, t]) });
-    await verbs.rename(item("猫"));
-    eq(JSON.stringify(seen), JSON.stringify([["猫", "新"]]));
-    const seen2 = [];
-    const r = mk({ inputs: ["占", null], file: { tryMove: async () => ({ ok: false, where: "cloud" }) }, onRenamed: (f, t) => seen2.push([f, t]) });
-    await r.verbs.rename(item("猫")); eq(seen2.length, 0);
-  });
-  it("移动成功 → onRenamed(from, 夹/base)", async () => {
-    const seen = [];
-    const r = mk({ onRenamed: (f, t) => seen.push([f, t]) }); r.host._pick = () => "sub";
-    await r.verbs.move(item("猫"), { folder: "", folderNames: ["sub"] });
-    eq(JSON.stringify(seen), JSON.stringify([["猫", "sub/猫"]]));
   });
 });

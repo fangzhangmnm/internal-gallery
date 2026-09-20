@@ -23,9 +23,7 @@ export interface DataFacePolicy {
   isDoc?: (path: string) => boolean;
   isImage?: (path: string) => boolean;
   naming?: NameBoundary;
-  /** 0.3.0：这些路径连杂物都不显示（JRB：v1 遗留 session.json / library.json、写入方半成品 *.part / ~* / .tmp）。不给 = 全显示。
-   *  放数据面而不是宿主过滤：帧是包算的，宿主拿不到「others」那一列。 */
-  hide?: (path: string) => boolean;
+  // （0.3.0 的 hide 0.3.2 撤：「夹里有什么」是 store 列举面的事——`createStore({ hiddenName })`（store 0.14.0），本包不再过滤。）
 }
 const IDENTITY: NameBoundary = { bare: (s) => s, full: (b) => b };
 const _CLOUD_STATES = new Set<SyncState>(["cloud-only", "synced", "unpushed", "newer-on-cloud", "conflict"]);
@@ -49,8 +47,7 @@ export function galleryItemFromStoreItem(it: Item, naming: NameBoundary = IDENTI
 
 export function createGalleryDataFace(deps: { store: () => DataFaceStore | null; policy?: DataFacePolicy }) {
   const isDoc = deps.policy?.isDoc ?? isDocPath, isImage = deps.policy?.isImage ?? isImagePath, naming = deps.policy?.naming ?? IDENTITY;
-  const hide = deps.policy?.hide ?? (() => false);
-  const visible = (items: Item[]): Item[] => items.filter((it) => !hide(it.path));
+
   const requireStore = (): DataFaceStore => { const s = deps.store(); if (!s) throw new Error("gallery data face: no library attached"); return s; };
   const toImageItems = (items: Item[]): CloudImageItem[] => items
     .filter((it) => isImage(it.path))
@@ -64,16 +61,16 @@ export function createGalleryDataFace(deps: { store: () => DataFaceStore | null;
   return {
     /** 订阅当前夹：立即本地帧、云端到了同一 cb 再闪。文档 natural 倒序；图片按修改时间倒序；杂物显示不打开；子夹自然正序。 */
     watchFolder(folder: string, cb: (snap: GallerySnapshot) => void, opts?: { onError?: (err: unknown, phase: WatchFolderErrorPhase) => void }): () => void {
-      return requireStore().files.watchFolder(folder, (snap) => { const items = visible(snap.items); cb({
+      return requireStore().files.watchFolder(folder, (snap) => cb({
         path: snap.path,
-        items: items.filter((it) => isDoc(it.path)).map((it) => galleryItemFromStoreItem(it, naming)).sort((a, b) => naturalCompare(b.name, a.name)),
-        images: toImageItems(items),
-        others: toOtherItems(items),
+        items: snap.items.filter((it) => isDoc(it.path)).map((it) => galleryItemFromStoreItem(it, naming)).sort((a, b) => naturalCompare(b.name, a.name)),
+        images: toImageItems(snap.items),
+        others: toOtherItems(snap.items),
         folderNames: folderNamesOf(folder, snap.folders),
-      }); }, opts);
+      }), opts);
     },
     watchFolderImages(folder: string, cb: (snap: { path: string; images: CloudImageItem[]; folderNames: string[] }) => void): () => void {
-      return requireStore().files.watchFolder(folder, (snap) => cb({ path: snap.path, images: toImageItems(visible(snap.items)), folderNames: folderNamesOf(folder, snap.folders) }));
+      return requireStore().files.watchFolder(folder, (snap) => cb({ path: snap.path, images: toImageItems(snap.items), folderNames: folderNamesOf(folder, snap.folders) }));
     },
     openCloudImage: (path: string): Promise<Blob | null> => requireStore().file(path, { isZip: false, mode: "existing" }).open(),
     /** 回收站：store 两端聚合的 TrashItem[] → TrashGItem（只元数据，无 blob）。 */
