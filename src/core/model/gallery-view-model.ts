@@ -7,40 +7,37 @@
 //
 // 复用形状：item 形状通用、徽章/面包屑无 ORA 依赖 → 整块可抬给 AtlasMaker/RealHome（WeebPaint 专用 example）。
 
+import { isCached, isDirty, type SyncState } from "@internal/store";
 import { t } from "../text.ts";
 import { pathBasename } from "./gallery-path.ts";
-import { itemTime } from "./gallery-model.ts";
-import type { GalleryItem, CloudFile, LocalSession } from "./gallery-model.ts";
+import type { CloudFile, LocalSession } from "./gallery-model.ts";
 
-// 本地项（watchFolder 单夹快照的元素 + 图库消费的运行态字段：缩略图 Blob / 字节大小 /
-// 加密标志 / 回收站 key）。store 本体仍是 .js，这里只声明图库读到的字段。
+// 回收站项的本地 / 云端元字段（只回收站用：trashKey / cloudItemId / 缩略图 Blob）。**文件项（GItem）0.4.0 起不再有 local/cloud 对象**。
 export interface LocalSessionMeta extends LocalSession {
   size?: number;
   thumb?: Blob | null;
   encrypted?: boolean;
   trashKey?: string;
 }
-
-// 云端文件元字段。缩略图走 store.getPeek（按 name，不再要 itemId/downloadUrl，内容盲）——
-//   这里只留 size（新鲜度戳退路）；lastModifiedDateTime 在基类 CloudFile。
-//   id 仅回收站 restore/purge 的 cloudItemId 用（store.listTrash 带回），缩略图路径不碰。
 export interface CloudFileMeta extends CloudFile {
   id?: string;
   size?: number;
 }
 
-// 图库消费的 item 形状：gallery-model 的 GalleryItem + 图库运行态（dirty / ghost）+
-// local/cloud 的扩展元字段。
-export interface GItem extends Omit<GalleryItem, "local" | "cloud"> {
-  local: LocalSessionMeta | null;
-  cloud: CloudFileMeta | null;
-  dirty?: boolean;
-  ghost?: boolean;
-  pendingGone?: boolean;   // clean cloud-gone 孤儿、防抖 grace 内（云端刚没了，本地干净副本待处理）
-  cloudNewer?: boolean;    // 云端字节比本地新（newer-on-cloud / conflict）→ ThumbCell 取图走 source:"cloud"（见 app-store.itemToG）
-  newerOnCloud?: boolean;  // 本地 clean ∧ 云端动过（打开会静默快进采纳）——badge 去压扁（老账 C，2026-08-25）
-  conflict?: boolean;      // 本地 dirty ∧ 云端动过（保存/推送会弹冲突面）——badge 去压扁（老账 C，2026-08-25）
-}
+/** 0.4.0（user 2026-09-19「gallery 该直接吃 syncState」）：图库消费的文件项 = store Item 的裸名视图。
+ *  **唯一状态源 = syncState（store 9 态）**；徽章 / 菜单 / 缩略图来源全从它算，本包不再派生 local/cloud/dirty/ghost… 一堆布尔
+ *  （那正是 store Item 注释警告的「下游重推导越狱」形状）。size / lastModified 是数据不是状态。 */
+export interface GItem { name: string; syncState: SyncState; size?: number; lastModified?: number }
+
+// 读状态的三个谓词——全包唯一允许「看 syncState 分支」的地方（模板 / verbs 只准用它们，不准再写 `s === "…"`）。
+/** 本地有字节副本（store isCached：synced / unpushed / newer-on-cloud / conflict / ghost / pendingGone / float / local-only）。 */
+export const hasLocalCopy = (s: SyncState): boolean => isCached(s);
+/** 云端有副本（cloud-only / synced / unpushed / newer-on-cloud / conflict）。 */
+export const hasCloudCopy = (s: SyncState): boolean => s === "cloud-only" || s === "synced" || s === "unpushed" || s === "newer-on-cloud" || s === "conflict";
+/** 有未推字节（store isDirty）。 */
+export const hasUnpushed = (s: SyncState): boolean => isDirty(s);
+/** 云端字节比本地新 → 缩略图必须走 source:"cloud"（QA 2026-08-21「新 token 配旧字节」根修）。 */
+export const cloudBytesNewer = (s: SyncState): boolean => s === "newer-on-cloud" || s === "conflict";
 
 // 文件 tile 的同步徽章（图标 SVG 在组件 template 里按 kind 渲）。ghost = cloud-gone dirty 孤儿；pendingGone = cloud-gone clean（grace 内）。
 export type BadgeKind = "syncedBoth" | "dirtyBoth" | "cloudOnly" | "localOnly" | "float" | "ghost" | "pendingGone" | "newerOnCloud" | "conflictBoth";   // 9 值 = store SyncState 一一对应（2026-09-09 补 float：从未同步 ∧ 有编辑）
@@ -51,59 +48,43 @@ export interface GalleryTile {
   fullPath: string;      // = name（tooltip）
   time: number;          // ms epoch
   size: number;          // bytes
+  syncState: SyncState;  // 0.4.0：原样带着（宿主 hook / 调试）
   badge: BadgeKind;
   badgeTitle: string;
+  hasLocal: boolean;     // 0.4.0：模板用的三个谓词（hasLocalCopy / hasCloudCopy / cloudBytesNewer 的结果）
+  hasCloud: boolean;
+  cloudNewer: boolean;
   ghost: boolean;        // cloud-gone dirty 孤儿（云端 path 被别的设备改名/删，本地有未推编辑）→ UI surface
   pendingGone: boolean;  // cloud-gone clean 孤儿、防抖 grace 内（照常显示 + badge；宽限后自动移入回收站；可「重新上传」/「删除」）
-  hasLocalThumb: boolean;
-  cloud: CloudFileMeta | null;     // {size,lastModifiedDateTime} 给 thumb provider（按 name+token 拉）；纯本地 = null
   isActive: boolean;
   encrypted: boolean;    // 本地字节是加密容器（ADR-0012），由 gallery 按夹探测注入。纯云端项未知（thumb 拉回时按 MIME 现场识别）
 }
 
+/** store 9 态 → 徽章 9 态，一一对应、零推导。登出视角 / 离线的压扁由 store 在算 syncState 时做（ListContext），本包不再重做。 */
+const BADGE_OF: Record<SyncState, BadgeKind> = {
+  "cloud-only": "cloudOnly", synced: "syncedBoth", unpushed: "dirtyBoth", "newer-on-cloud": "newerOnCloud", conflict: "conflictBoth",
+  ghost: "ghost", pendingGone: "pendingGone", float: "float", "local-only": "localOnly",
+};
 export function tileFor(
   item: GItem,
   opts: { signedIn: boolean; activeName: string | null; encrypted?: boolean },
 ): GalleryTile {
-  const isLocal = !!item.local, isCloud = !!item.cloud;
-  let badge: BadgeKind, badgeTitle: string;
-  if (item.ghost) {
-    // ghost 优先：dirty 孤儿（曾 synced，云端 path 被别的设备改名/移动/删，本地有未推编辑）。
-    //   不当普通 localOnly——明确 surface；badge≠localOnly 顺带让「推送到云端」按钮消失（防复活已删路径）。
-    badge = "ghost"; badgeTitle = t("gv.badge.ghost");
-  } else if (item.pendingGone) {
-    // pendingGone：clean 孤儿（曾 synced，云端 path 没了，本地干净副本）。防抖 grace 内照常显示 + 此 badge；
-    //   宽限期后 reconcile 会自动移入回收站。用户可「重新上传」（推回云端）或「删除」（提前入回收站）。
-    badge = "pendingGone"; badgeTitle = t("gv.badge.pendingGone");
-  } else if (isLocal && isCloud) {
-    // 去压扁（老账 C）：conflict/newer-on-cloud 不再冒充 unpushed/synced。优先级 conflict > newer-on-cloud >
-    //   dirty > synced（conflict 蕴含 dirty，必须先判）。
-    if (opts.signedIn && item.conflict) { badge = "conflictBoth"; badgeTitle = t("gv.badge.conflictBoth"); }
-    else if (opts.signedIn && item.newerOnCloud) { badge = "newerOnCloud"; badgeTitle = t("gv.badge.newerOnCloud"); }
-    else if (opts.signedIn && item.dirty) { badge = "dirtyBoth"; badgeTitle = t("gv.badge.dirtyBoth"); }
-    else { badge = "syncedBoth"; badgeTitle = t("gv.badge.syncedBoth"); }
-  } else if (isCloud) {
-    badge = "cloudOnly"; badgeTitle = t("gv.badge.cloudOnly");
-  } else if (opts.signedIn && item.dirty) {
-    // float（store SyncState 第 9 值）：从未同步 ∧ 有编辑——离线新建改了没上过云。WeebPaint 原视图模型压成 localOnly，2026-09-09 补齐。
-    badge = "float"; badgeTitle = t("gv.badge.float");
-  } else {
-    badge = "localOnly"; badgeTitle = opts.signedIn ? t("gv.badge.localOnly") : t("gv.badge.localPlain");
-  }
+  const s = item.syncState;
+  const badge = BADGE_OF[s] ?? "localOnly";
+  const badgeTitle = badge === "localOnly" && !opts.signedIn ? t("gv.badge.localPlain") : t(`gv.badge.${badge}` as Parameters<typeof t>[0]);
   return {
     name: item.name,
     displayName: pathBasename(item.name),
     fullPath: item.name,
-    time: itemTime(item),
-    size: (item.local?.size) || (item.cloud?.size) || 0,
+    time: item.lastModified ?? 0,
+    size: item.size ?? 0,
+    syncState: s,
     badge, badgeTitle,
-    ghost: !!item.ghost,
-    pendingGone: !!item.pendingGone,
-    hasLocalThumb: !!(item.local && item.local.thumb),
-    cloud: item.cloud || null,
+    hasLocal: hasLocalCopy(s), hasCloud: hasCloudCopy(s), cloudNewer: cloudBytesNewer(s),
+    ghost: s === "ghost",
+    pendingGone: s === "pendingGone",
     isActive: !!opts.activeName && item.name === opts.activeName,
     // 加密态由调用方探测后注入（store 的 Item 内容盲、没有 encrypted 轴）。
-    //   v415 前这里读 item.local.encrypted —— 那个字段**从来没有写入者**，故恒 false。
     encrypted: !!opts.encrypted,
   };
 }

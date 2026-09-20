@@ -3,63 +3,33 @@ import { describe, it, eq, assert } from "./runner.mjs";
 import { tileFor, breadcrumb, trashTileFor, humanSize } from "../src/core/model/gallery-view-model.ts";
 import { naturalCompare } from "../src/core/model/natural-order.ts";
 
-describe("gallery-view-model · tileFor 徽章 4 态", () => {
-  const local = { name: "a", updatedAt: 100, size: 10, thumb: {} };
-  const cloud = { id: "c1", size: 20, lastModifiedDateTime: "2026-01-01T00:00:00Z" };
-
-  it("本地+云端·已同步", () => {
-    const t = tileFor({ name: "a", local, cloud, dirty: false }, { signedIn: true, activeName: null });
-    eq(t.badge, "syncedBoth");
-    assert(t.hasLocalThumb);
-    eq(t.cloud.id, "c1");
+describe("gallery-view-model · tileFor = store 9 态直映（0.4.0：不再派生 local/cloud/dirty 布尔）", () => {
+  const on = { signedIn: true, activeName: null };
+  const badges = { "cloud-only": "cloudOnly", synced: "syncedBoth", unpushed: "dirtyBoth", "newer-on-cloud": "newerOnCloud", conflict: "conflictBoth", ghost: "ghost", pendingGone: "pendingGone", float: "float", "local-only": "localOnly" };
+  it("9 态一一对应，零推导", () => {
+    for (const [s, b] of Object.entries(badges)) eq(tileFor({ name: "a", syncState: s }, on).badge, b, s);
   });
-  it("本地+云端·dirty（登录）→ dirtyBoth", () => {
-    const t = tileFor({ name: "a", local, cloud, dirty: true }, { signedIn: true, activeName: null });
-    eq(t.badge, "dirtyBoth");
+  it("三谓词跟着 syncState：hasLocal / hasCloud / cloudNewer；ghost / pendingGone 旗", () => {
+    const t1 = tileFor({ name: "a", syncState: "synced" }, on); assert(t1.hasLocal && t1.hasCloud && !t1.cloudNewer);
+    const t2 = tileFor({ name: "a", syncState: "cloud-only" }, on); assert(!t2.hasLocal && t2.hasCloud);
+    const t3 = tileFor({ name: "a", syncState: "float" }, on); assert(t3.hasLocal && !t3.hasCloud);
+    const t4 = tileFor({ name: "a", syncState: "newer-on-cloud" }, on); assert(t4.cloudNewer);
+    const t5 = tileFor({ name: "a", syncState: "conflict" }, on); assert(t5.cloudNewer && t5.hasLocal && t5.hasCloud);
+    eq(tileFor({ name: "a", syncState: "ghost" }, on).ghost, true); eq(tileFor({ name: "a", syncState: "pendingGone" }, on).pendingGone, true);
+    eq(tileFor({ name: "a", syncState: "local-only" }, on).ghost, false);
+    assert(/moved or deleted/.test(tileFor({ name: "a", syncState: "ghost" }, on).badgeTitle), "ghost 标题说明 cloud-gone");
+    assert(/unsynced|never uploaded/i.test(tileFor({ name: "a", syncState: "float" }, on).badgeTitle));
   });
-  it("dirty 但未登录 → syncedBoth（dirty 只在登录时有意义）", () => {
-    const t = tileFor({ name: "a", local, cloud, dirty: true }, { signedIn: false, activeName: null });
-    eq(t.badge, "syncedBoth");
+  it("登出视角不在本包压扁（store 算 syncState 时已按 ListContext 处理）；只有 localOnly 的文案换成「本地」", () => {
+    eq(tileFor({ name: "a", syncState: "unpushed" }, { signedIn: false, activeName: null }).badge, "dirtyBoth");
+    const off = tileFor({ name: "a", syncState: "local-only" }, { signedIn: false, activeName: null });
+    eq(off.badge, "localOnly"); assert(off.badgeTitle !== tileFor({ name: "a", syncState: "local-only" }, on).badgeTitle, "登出文案不同");
   });
-  it("纯云端 → cloudOnly", () => {
-    const t = tileFor({ name: "a", local: null, cloud, dirty: false }, { signedIn: true, activeName: null });
-    eq(t.badge, "cloudOnly");
-    eq(t.hasLocalThumb, false);
-  });
-  it("纯本地 → localOnly", () => {
-    const t = tileFor({ name: "a", local, cloud: null }, { signedIn: true, activeName: null });
-    eq(t.badge, "localOnly");
-    eq(t.cloud, null);
-  });
-  it("displayName = basename，time/size 取在", () => {
-    const t = tileFor({ name: "f/sub/pic", local, cloud: null }, { signedIn: true, activeName: null });
-    eq(t.displayName, "pic");
-    eq(t.fullPath, "f/sub/pic");
-    eq(t.time, 100);
-    eq(t.size, 10);
-  });
-  it("isActive 配对当前活动名", () => {
-    eq(tileFor({ name: "a", local }, { signedIn: true, activeName: "a" }).isActive, true);
-    eq(tileFor({ name: "a", local }, { signedIn: true, activeName: "b" }).isActive, false);
-  });
-  it("ghost（cloud-gone dirty 孤儿）→ ghost badge，优先于 localOnly（顺带让推送按钮消失）", () => {
-    const t = tileFor({ name: "a", local, cloud: null, ghost: true }, { signedIn: true, activeName: null });
-    eq(t.badge, "ghost");
-    eq(t.ghost, true);
-    assert(/moved or deleted/.test(t.badgeTitle), "标题说明 cloud-gone");
-  });
-  it("非 ghost → ghost 字段 false", () => {
-    eq(tileFor({ name: "a", local, cloud: null }, { signedIn: true, activeName: null }).ghost, false);
-  });
-  it("pendingGone（cloud-gone clean 孤儿、grace 内）→ pendingGone badge，优先于 localOnly", () => {
-    const t = tileFor({ name: "a", local, cloud: null, pendingGone: true }, { signedIn: true, activeName: null });
-    eq(t.badge, "pendingGone");
-    eq(t.pendingGone, true);
-    assert(/gone|pending/.test(t.badgeTitle), "标题说明 cloud-gone + 待处理");
-  });
-  it("ghost 优先于 pendingGone（dirty cloud-gone 走 ghost，不会误标 pendingGone）", () => {
-    const t = tileFor({ name: "a", local, cloud: null, ghost: true, pendingGone: true }, { signedIn: true, activeName: null });
-    eq(t.badge, "ghost");
+  it("displayName = basename，time/size 取 item 的 lastModified/size；isActive 配对当前活动名", () => {
+    const t = tileFor({ name: "f/sub/pic", syncState: "local-only", size: 10, lastModified: 100 }, on);
+    eq(t.displayName, "pic"); eq(t.fullPath, "f/sub/pic"); eq(t.time, 100); eq(t.size, 10); eq(t.syncState, "local-only");
+    eq(tileFor({ name: "a", syncState: "synced" }, { signedIn: true, activeName: "a" }).isActive, true);
+    eq(tileFor({ name: "a", syncState: "synced" }, { signedIn: true, activeName: "b" }).isActive, false);
   });
 });
 
@@ -121,44 +91,5 @@ describe("gallery · naturalCompare 自然排序", () => {
     const arr = ["樱花", "月白", "abc", "ABC2", "abc10"].sort(naturalCompare);
     eq(arr.length, 5, "排序不炸不丢");
     assert(arr.indexOf("ABC2") < arr.indexOf("abc10"), "跨大小写数字段仍数值比");
-  });
-});
-
-// badge 去压扁（老账 C，20260820 handoff §2C；user 2026-08-25 拍板）added by Claude Fable 5
-describe("gallery-view-model · tileFor 去压扁（newer-on-cloud / conflict）", () => {
-  const local = { name: "a", updatedAt: 100, size: 10, thumb: {} };
-  const cloud = { id: "c1", size: 20, lastModifiedDateTime: "2026-01-01T00:00:00Z" };
-  it("newer-on-cloud（clean ∧ 云端动过）→ newerOnCloud，不再冒充 synced", () => {
-    const t = tileFor({ name: "a", local, cloud, dirty: false, newerOnCloud: true }, { signedIn: true, activeName: null });
-    eq(t.badge, "newerOnCloud");
-  });
-  it("conflict（dirty ∧ 云端动过）→ conflictBoth，不再冒充 unpushed；优先于 dirtyBoth", () => {
-    const t = tileFor({ name: "a", local, cloud, dirty: true, conflict: true }, { signedIn: true, activeName: null });
-    eq(t.badge, "conflictBoth");
-  });
-  it("未登录 → 两态不参与（离线不谎报云端知识）", () => {
-    const t = tileFor({ name: "a", local, cloud, dirty: false, newerOnCloud: true }, { signedIn: false, activeName: null });
-    eq(t.badge, "syncedBoth");
-  });
-  it("ghost/pendingGone 仍最高优先", () => {
-    const t = tileFor({ name: "a", local, cloud, dirty: true, conflict: true, ghost: true }, { signedIn: true, activeName: null });
-    eq(t.badge, "ghost");
-  });
-});
-
-describe("gallery-view-model · 第 9 个徽章 float（2026-09-09 补齐 store SyncState）", () => {
-  const base = { name: "a", cloud: null, local: { name: "a" } };
-  it("仅本地 ∧ dirty ∧ 已登录 → float（不再压成 localOnly）", () => {
-    const tile = tileFor({ ...base, dirty: true }, { signedIn: true, activeName: null });
-    eq(tile.badge, "float");
-    assert(/unsynced|never uploaded/i.test(tile.badgeTitle), tile.badgeTitle);
-  });
-  it("仅本地 ∧ clean → localOnly；未登录 → localOnly（本地）", () => {
-    eq(tileFor({ ...base, dirty: false }, { signedIn: true, activeName: null }).badge, "localOnly");
-    eq(tileFor({ ...base, dirty: true }, { signedIn: false, activeName: null }).badge, "localOnly");
-  });
-  it("ghost / pendingGone 仍优先于 float", () => {
-    eq(tileFor({ ...base, dirty: true, ghost: true }, { signedIn: true, activeName: null }).badge, "ghost");
-    eq(tileFor({ ...base, dirty: true, pendingGone: true }, { signedIn: true, activeName: null }).badge, "pendingGone");
   });
 });

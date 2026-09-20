@@ -4,20 +4,12 @@ import { createGalleryDataFace, galleryItemFromStoreItem } from "../src/core/dat
 const item = (path, syncState, extra = {}) => ({ path, syncState, ...extra });
 const fakeStore = (snap) => ({ files: { watchFolder: (folder, cb) => { cb({ path: folder, ...snap, complete: true }); return () => {}; }, listTrash: async () => [] }, file: () => ({ open: async () => null }) });
 
-describe("data-face · store.Item → GItem（全部派生自 syncState）", () => {
-  it("synced → local+cloud；cloud-only → 只 cloud；float/local-only → 只 local；dirty 跟 store 走", () => {
+describe("data-face · store.Item → GItem（0.4.0：syncState 原样透传，不派生布尔）", () => {
+  it("name 裸名 + syncState + size/lastModified；没有 local/cloud/dirty 字段", () => {
     const g = galleryItemFromStoreItem(item("a.ora", "synced", { size: 5, lastModified: 1000 }));
-    assert(g.local && g.cloud && !g.dirty && !g.ghost);
-    eq(g.local.updatedAt, 1000); eq(g.cloud.size, 5);
-    const c = galleryItemFromStoreItem(item("b.ora", "cloud-only")); assert(!c.local && c.cloud);
-    const f = galleryItemFromStoreItem(item("c.ora", "float")); assert(f.local && !f.cloud && f.dirty, "float = 本地 ∧ dirty");
-    const l = galleryItemFromStoreItem(item("d.ora", "local-only")); assert(l.local && !l.cloud && !l.dirty);
-  });
-  it("ghost / pendingGone / newer-on-cloud / conflict 四态各自立旗；cloudNewer 覆盖后两者", () => {
-    eq(galleryItemFromStoreItem(item("a.ora", "ghost")).ghost, true);
-    eq(galleryItemFromStoreItem(item("a.ora", "pendingGone")).pendingGone, true);
-    const n = galleryItemFromStoreItem(item("a.ora", "newer-on-cloud")); assert(n.newerOnCloud && n.cloudNewer && !n.conflict);
-    const k = galleryItemFromStoreItem(item("a.ora", "conflict")); assert(k.conflict && k.cloudNewer && k.dirty);
+    eq(g.syncState, "synced"); eq(g.size, 5); eq(g.lastModified, 1000);
+    assert(!("local" in g) && !("cloud" in g) && !("dirty" in g), "不再派生布尔");
+    eq(galleryItemFromStoreItem(item("b.ora", "conflict")).syncState, "conflict");
   });
   it("naming.bare 决定显示身份（WeebPaint：去 .ora；身份=全名的 app：恒等）", () => {
     eq(galleryItemFromStoreItem(item("夹/x.ora", "synced"), { bare: (s) => s.replace(/\.ora$/, ""), full: (b) => b + ".ora" }).name, "夹/x");

@@ -21,7 +21,7 @@ function mk({ file = {}, files = {}, inputs = [], confirms = [], active = null, 
   const verbs = createGalleryVerbs({ store: () => store, host, doc, naming: { bare: (s) => s.replace(/\.ora$/, ""), full: (b) => `${b}.ora` } });
   return { verbs, statuses, calls, host };
 }
-const item = (name, extra = {}) => ({ name, local: { name }, cloud: { path: name }, ...extra });
+const item = (name, extra = {}) => ({ name, syncState: "synced", ...extra });
 
 describe("verbs · rename（改名失败保输入循环重试，错误写进重弹的标题）", () => {
   it("撞名 → 重问一次，默认值 = 上次输入，标题带占用位置；第二次 ok → 已改名", async () => {
@@ -120,13 +120,13 @@ describe("verbs · encrypt（首次创建的密码只有加密成功才算数）
 describe("verbs · keepOffline（0.3.0，JRB：纯云端件不打开就囤一份）", () => {
   it("调 VerbFile.keepOffline（全名）、经 busy、成功 status 已留离线", async () => {
     const { verbs, statuses, calls } = mk();
-    await verbs.keepOffline(item("猫", { local: null }));
+    await verbs.keepOffline(item("猫", { syncState: "cloud-only" }));
     eq(calls.filter((c) => c[0] === "keepOffline").pop()[1], "猫.ora", "边界转全名");
     eq(statuses.pop()[0], t("gal.st.keptOffline", { name: "猫" }));
   });
   it("失败走 status（isError）不抛", async () => {
     const { verbs, statuses } = mk({ file: { keepOffline: async () => { throw new Error("offline"); } } });
-    await verbs.keepOffline(item("猫", { local: null }));
+    await verbs.keepOffline(item("猫", { syncState: "cloud-only" }));
     const last = statuses.pop(); eq(last[1], true); eq(last[0], t("gal.st.keepOfflineFail", { e: "offline" }));
   });
 });

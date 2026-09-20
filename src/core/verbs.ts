@@ -2,7 +2,7 @@
 //   deleteImage/folderDelete/trashRestore/trashPurge/emptyTrash/encrypt/decrypt/unlock），2026-09-09 抽出成 headless 模块。
 // 红线兜底随行（提案 §5）：删=回收站且诚实读 DelResult；改名失败保输入循环重试、错误写进重弹的输入框标题；失败不报成功；
 //   移动只给「上级 + 可见子夹」绝不 poll 全树；复制加密源原样搬密文；清空回收站部分失败必说。屏幕层只负责调 + reload。
-import type { GItem, TrashGItem } from "./model/gallery-view-model.ts";
+import { hasLocalCopy, hasCloudCopy, hasUnpushed, type GItem, type TrashGItem } from "./model/gallery-view-model.ts";
 import { copyTargetName, type NameBoundary } from "./model/gallery-model.ts";
 import { pathFolder, pathBasename, pathJoin } from "./model/gallery-path.ts";
 import { naturalCompare } from "./model/natural-order.ts";
@@ -172,8 +172,8 @@ export function createGalleryVerbs(d: VerbDeps) {
   /** 删除 = 移回收站；诚实读 DelResult（cancelled / noop / 只删了本地 都不许报「已删除」）。 */
   async function del(item: GItem): Promise<void> {
     const isActive = item.name === d.host.activeName();
-    const isLocal = !!item.local, isCloud = !!item.cloud;
-    const dirty = isLocal && isCloud && !!item.dirty;
+    const isLocal = hasLocalCopy(item.syncState), isCloud = hasCloudCopy(item.syncState);
+    const dirty = isLocal && isCloud && hasUnpushed(item.syncState);
     let detail = isLocal && isCloud ? (dirty ? t("gal.del.dirtyDetail") : t("gal.del.syncedDetail")) : isCloud ? t("gal.del.cloudDetail") : t("gal.del.localDetail");
     if (isActive) detail += t("gal.del.activeSuffix");
     if (!(await d.host.confirm(t("gal.dlg.delTitle", { name: item.name }), detail))) return;
@@ -241,7 +241,7 @@ export function createGalleryVerbs(d: VerbDeps) {
   // ── 加密 intent（ADR-0012）：transform 与密码循环在 store；这里只剩活动项预检、首次设密码 UX、残留清理 ──
   function _encPrecheck(item: GItem, verb: string): boolean {
     if (item.name === d.host.activeName()) { d.host.status(t("gal.st.openActive", { verb }), true); return false; }
-    if (!item.local) { d.host.status(t("gal.st.cloudPullFirst", { verb }), true); return false; }
+    if (!hasLocalCopy(item.syncState)) { d.host.status(t("gal.st.cloudPullFirst", { verb }), true); return false; }
     return true;
   }
   async function _afterSwap(item: GItem, res: { status?: string }, okMsg: string): Promise<boolean> {

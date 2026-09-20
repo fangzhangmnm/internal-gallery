@@ -4,6 +4,7 @@ import type { NoticeOpts } from '@internal/workbench-elements';
 import type { StoreTextKey } from '@internal/store';
 import type { StoreTextParams } from '@internal/store';
 import type { StoreUI } from '@internal/store';
+import { SyncState } from '@internal/store';
 import { TrashItem } from '@internal/store';
 import { WatchFolderErrorPhase } from '@internal/store';
 
@@ -184,6 +185,9 @@ export declare interface CloudAuthPort {
     } | null;
     retrySilentSignIn(): Promise<unknown>;
 }
+
+/** 云端字节比本地新 → 缩略图必须走 source:"cloud"（QA 2026-08-21「新 token 配旧字节」根修）。 */
+export declare const cloudBytesNewer: (s: SyncState) => boolean;
 
 export declare interface CloudFile {
     path: string;
@@ -2039,7 +2043,7 @@ export declare interface GalleryItem {
     deletedAt?: number;
 }
 
-/** store.Item{path,syncState} → GItem（gallery-view-model 的输入；全部派生自 syncState，不重推导）。 */
+/** store.Item{path,syncState,size,lastModified} → GItem：裸名 + **syncState 原样透传**（0.4.0：不再派生 local/cloud/dirty… 布尔；状态的唯一源在 store）。 */
 export declare function galleryItemFromStoreItem(it: Item, naming?: NameBoundary): GItem;
 
 export declare type GalleryKind = "onedrive" | "folder";
@@ -2142,28 +2146,38 @@ export declare interface GalleryTile {
     fullPath: string;
     time: number;
     size: number;
+    syncState: SyncState;
     badge: BadgeKind;
     badgeTitle: string;
+    hasLocal: boolean;
+    hasCloud: boolean;
+    cloudNewer: boolean;
     ghost: boolean;
     pendingGone: boolean;
-    hasLocalThumb: boolean;
-    cloud: CloudFileMeta | null;
     isActive: boolean;
     encrypted: boolean;
 }
 
 export declare type GalleryVerbs = ReturnType<typeof createGalleryVerbs>;
 
-export declare interface GItem extends Omit<GalleryItem, "local" | "cloud"> {
-    local: LocalSessionMeta | null;
-    cloud: CloudFileMeta | null;
-    dirty?: boolean;
-    ghost?: boolean;
-    pendingGone?: boolean;
-    cloudNewer?: boolean;
-    newerOnCloud?: boolean;
-    conflict?: boolean;
+/** 0.4.0（user 2026-09-19「gallery 该直接吃 syncState」）：图库消费的文件项 = store Item 的裸名视图。
+ *  **唯一状态源 = syncState（store 9 态）**；徽章 / 菜单 / 缩略图来源全从它算，本包不再派生 local/cloud/dirty/ghost… 一堆布尔
+ *  （那正是 store Item 注释警告的「下游重推导越狱」形状）。size / lastModified 是数据不是状态。 */
+export declare interface GItem {
+    name: string;
+    syncState: SyncState;
+    size?: number;
+    lastModified?: number;
 }
+
+/** 云端有副本（cloud-only / synced / unpushed / newer-on-cloud / conflict）。 */
+export declare const hasCloudCopy: (s: SyncState) => boolean;
+
+/** 本地有字节副本（store isCached：synced / unpushed / newer-on-cloud / conflict / ghost / pendingGone / float / local-only）。 */
+export declare const hasLocalCopy: (s: SyncState) => boolean;
+
+/** 有未推字节（store isDirty）。 */
+export declare const hasUnpushed: (s: SyncState) => boolean;
 
 export declare function humanSize(b: number | null | undefined): string;
 

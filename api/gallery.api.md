@@ -10,6 +10,7 @@ import type { NoticeOpts } from '@internal/workbench-elements';
 import type { StoreTextKey } from '@internal/store';
 import type { StoreTextParams } from '@internal/store';
 import type { StoreUI } from '@internal/store';
+import { SyncState } from '@internal/store';
 import { TrashItem } from '@internal/store';
 import { WatchFolderErrorPhase } from '@internal/store';
 
@@ -271,6 +272,9 @@ export interface CloudAuthPort {
     // (undocumented)
     retrySilentSignIn(): Promise<unknown>;
 }
+
+// @public
+export const cloudBytesNewer: (s: SyncState) => boolean;
 
 // @public (undocumented)
 export interface CloudFile {
@@ -2370,7 +2374,7 @@ export interface GalleryTile {
     // (undocumented)
     badgeTitle: string;
     // (undocumented)
-    cloud: CloudFileMeta | null;
+    cloudNewer: boolean;
     // (undocumented)
     displayName: string;
     // (undocumented)
@@ -2380,7 +2384,9 @@ export interface GalleryTile {
     // (undocumented)
     ghost: boolean;
     // (undocumented)
-    hasLocalThumb: boolean;
+    hasCloud: boolean;
+    // (undocumented)
+    hasLocal: boolean;
     // (undocumented)
     isActive: boolean;
     // (undocumented)
@@ -2390,31 +2396,34 @@ export interface GalleryTile {
     // (undocumented)
     size: number;
     // (undocumented)
+    syncState: SyncState;
+    // (undocumented)
     time: number;
 }
 
 // @public (undocumented)
 export type GalleryVerbs = ReturnType<typeof createGalleryVerbs>;
 
-// @public (undocumented)
-export interface GItem extends Omit<GalleryItem, "local" | "cloud"> {
+// @public
+export interface GItem {
     // (undocumented)
-    cloud: CloudFileMeta | null;
+    lastModified?: number;
     // (undocumented)
-    cloudNewer?: boolean;
+    name: string;
     // (undocumented)
-    conflict?: boolean;
+    size?: number;
     // (undocumented)
-    dirty?: boolean;
-    // (undocumented)
-    ghost?: boolean;
-    // (undocumented)
-    local: LocalSessionMeta | null;
-    // (undocumented)
-    newerOnCloud?: boolean;
-    // (undocumented)
-    pendingGone?: boolean;
+    syncState: SyncState;
 }
+
+// @public
+export const hasCloudCopy: (s: SyncState) => boolean;
+
+// @public
+export const hasLocalCopy: (s: SyncState) => boolean;
+
+// @public
+export const hasUnpushed: (s: SyncState) => boolean;
 
 // @public (undocumented)
 export function humanSize(b: number | null | undefined): string;

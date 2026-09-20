@@ -1,7 +1,7 @@
 // 图库数据面（WET 自 WeebPaint src/app-store.ts 的图库段，2026-09-09）：store.Item → GItem；当前夹订阅的路由 + 排序；回收站映射。
 // 库唯一列举面 = store.files.watchFolder（订阅当前夹）；⛔ 永不 list 全库（WeebPaint 2026-07-12 删 listGallery 的判决）。
 // 扩展名知识来自 policy（默认 = cloud-image-model 的 WeebPaint 白名单）；裸名↔全名边界来自 policy.naming（默认恒等）。
-import { isCached, isDirty, type Item, type SyncState, type TrashItem, type WatchFolderErrorPhase } from "@internal/store";
+import { isCached, type Item, type TrashItem, type WatchFolderErrorPhase } from "@internal/store";
 import type { GItem, TrashGItem } from "./model/gallery-view-model.ts";
 import type { NameBoundary } from "./model/gallery-model.ts";
 import { isDocPath, isImagePath } from "./model/cloud-image-model.ts";
@@ -26,23 +26,13 @@ export interface DataFacePolicy {
   // （0.3.0 的 hide 0.3.2 撤：「夹里有什么」是 store 列举面的事——`createStore({ hiddenName })`（store 0.14.0），本包不再过滤。）
 }
 const IDENTITY: NameBoundary = { bare: (s) => s, full: (b) => b };
-const _CLOUD_STATES = new Set<SyncState>(["cloud-only", "synced", "unpushed", "newer-on-cloud", "conflict"]);
 
-/** store.Item{path,syncState} → GItem（gallery-view-model 的输入；全部派生自 syncState，不重推导）。 */
+/** store.Item{path,syncState,size,lastModified} → GItem：裸名 + **syncState 原样透传**（0.4.0：不再派生 local/cloud/dirty… 布尔；状态的唯一源在 store）。 */
 export function galleryItemFromStoreItem(it: Item, naming: NameBoundary = IDENTITY): GItem {
-  const name = naming.bare(it.path);
-  return {
-    name,
-    local: isCached(it.syncState) ? { name, size: it.size, updatedAt: it.lastModified } : null,
-    cloud: _CLOUD_STATES.has(it.syncState) ? { path: it.path, name, size: it.size, lastModifiedDateTime: it.lastModified ? new Date(it.lastModified).toISOString() : undefined } : null,
-    dirty: isDirty(it.syncState),
-    ghost: it.syncState === "ghost",
-    pendingGone: it.syncState === "pendingGone",
-    // 云端字节比本地新 → 缩略图必须走 source:"cloud"（QA 2026-08-21「新 token 配旧字节」根修）
-    cloudNewer: it.syncState === "newer-on-cloud" || it.syncState === "conflict",
-    newerOnCloud: it.syncState === "newer-on-cloud",
-    conflict: it.syncState === "conflict",
-  };
+  const g: GItem = { name: naming.bare(it.path), syncState: it.syncState };
+  if (it.size != null) g.size = it.size;
+  if (it.lastModified != null) g.lastModified = it.lastModified;
+  return g;
 }
 
 export function createGalleryDataFace(deps: { store: () => DataFaceStore | null; policy?: DataFacePolicy }) {

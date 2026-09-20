@@ -5,6 +5,8 @@
 > 纪律：**WeebPaint 行为是 spec，默认值 = 现行为，WeebPaint / WXHW 零改动**（全部新字段可选）。
 > **0.3.2 回写（2026-09-19 深夜，user「gallery 是前端…查一下还有什么切分错误的」）**：`policy.hide`（0.3.0）与 `onRenamed`（0.3.1）两个 hook **撤销**——「夹里有什么」是 store 列举面（`createStore({ hiddenName })`，store 0.14.0）；改名是身份变更、事件源在 store（`store.files.onRenamed`）。图库只画、只发起，不当数据源。
 
+> **0.4.0 回写（2026-09-19 深夜，user「galleryItemFromStoreItem 把 store 的 9 态 syncState 映射成一堆布尔……将来 gallery 该直接吃 syncState。做」）**：`GItem` 改为 `{ name, syncState, size?, lastModified? }`——**唯一状态源 = store 的 syncState**，包内不再派生 `local / cloud / dirty / ghost / pendingGone / cloudNewer / newerOnCloud / conflict` 一堆布尔（那正是 store Item 注释警告的「下游重推导越狱」形状）。徽章 = `BADGE_OF: Record<SyncState, BadgeKind>` 一一对应；模板 / verbs 读状态只经三谓词 `hasLocalCopy / hasCloudCopy / cloudBytesNewer`（+`hasUnpushed`），登出视角压扁交给 store 的 ListContext，包不再重做。`GalleryTile` 加 `syncState / hasLocal / hasCloud / cloudNewer`，删文件项的 `cloud / hasLocalThumb`（回收站项 `TrashGItem/TrashTile` 保留 local/cloud——那是回收站元数据 trashKey / cloudItemId / 缩略图，不是同步态）。**宿主破坏性变更**：`tile.subtitle/marker/onOpen` 等 hook 收到的 item 没有 `local.size` 了——用 `item.size`。
+
 ## 0. 一句话
 
 给 `GalleryScreenDeps.tile` 加一个 `layout: "list"`（一行一件、名字整行）和两个宿主 hook（副标题 / 未读角标），给 `DataFacePolicy` 加 `hide`（半成品 / 遗留 json 连杂物都不显示），给 verbs 加 `keepOffline`（纯云端件不打开就留一份离线）。全屏容器、上传入口、隐藏「新建」、「最近阅读」条**不进包**——它们是 chrome，按 0.1 提案 §3.1「chrome 标记留宿主」已定的边界（WXHW 的 `#galleryFull` 一屏就是宿主 CSS，包只出 `#galleryMount` 里面的东西）。

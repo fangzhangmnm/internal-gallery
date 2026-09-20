@@ -2,7 +2,7 @@
 // 变化只在接缝（提案 §3「塑」）：Vue 从 deps.vue 注入；session.* 十处 → DocHost；文件动词 → core/verbs；数据 → core/data-face；
 //   缩略图 / 加密 / 图标 / 文案 / 诊断 全走注入；宿主布局知识（当前夹记忆、图库模式判定）走 deps。模板与 class 名逐字保留。
 import type { GItem, TrashGItem, CloudFileMeta } from "../core/model/gallery-view-model.ts";
-import { tileFor, breadcrumb, trashTileFor, humanTime, humanSize } from "../core/model/gallery-view-model.ts";
+import { tileFor, breadcrumb, trashTileFor, humanTime, humanSize, hasLocalCopy } from "../core/model/gallery-view-model.ts";
 import { pathJoin } from "../core/model/gallery-path.ts";
 import type { NameBoundary } from "../core/model/gallery-model.ts";
 import { imageThumbToken, imageTwinBareName, mimeForImageName } from "../core/model/cloud-image-model.ts";
@@ -276,7 +276,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const encByName = reactive<Record<string, boolean>>({});
       async function probeEncrypted() {
         if (!enc) return;
-        for (const nm of data.files.filter((it) => it.local).map((it) => it.name)) {
+        for (const nm of data.files.filter((it) => hasLocalCopy(it.syncState)).map((it) => it.name)) {
           if (nm in encByName) continue;
           try { encByName[nm] = await enc.isEncrypted(nm); } catch { encByName[nm] = false; }
         }
@@ -284,7 +284,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       function invalidateEncrypted(name: string) { delete encByName[name]; void probeEncrypted(); }
       async function requestUnlock(): Promise<boolean> {
         await probeEncrypted();
-        for (const it of data.files) { if (!it.local || !encByName[it.name]) continue; return await verbs.unlock(it.name); }
+        for (const it of data.files) { if (!hasLocalCopy(it.syncState) || !encByName[it.name]) continue; return await verbs.unlock(it.name); }
         return false;
       }
       async function loadTrash() { loading.value = true; try { trash.value = await d.data.listTrash(); } finally { loading.value = false; } }
@@ -350,7 +350,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         const existing = data.files.find((it) => it.name === twin);
         if (existing) { await d.doc.open(existing); return; }
         const st = d.store();
-        if (st && await st.files.nameOccupied(naming.full(twin))) { await d.doc.open({ name: twin, local: null, cloud: null, dirty: false, ghost: false, pendingGone: false } as GItem); return; }
+        if (st && await st.files.nameOccupied(naming.full(twin))) { await d.doc.open({ name: twin, syncState: "cloud-only" } as GItem); return; }
         try {
           const blob = await d.host.busy(t("cp.downloading", { name: img.name }), () => d.data.openCloudImage(img.path));
           if (!blob) { d.host.status(t("cp.downloadFailed", { name: img.name }), true); return; }
@@ -431,7 +431,7 @@ const GALLERY_TEMPLATE = `
           </div>
 
           <div v-for="row in fileTiles" :key="row.t.name" class="gallery-tile" :class="{ active: row.t.isActive }" @click="openTile(row.item)">
-            <ThumbCell :local-thumb="row.t.hasLocalThumb ? row.item.local.thumb : null" :enc-name="row.t.encrypted && hasThumb(row.t.name) ? row.t.name : null" :fetchable="!row.t.encrypted && (!!row.t.cloud || !!row.item.local) && hasThumb(row.t.name)" :is-cloud="!row.item.local && !!row.t.cloud" :cloud-newer="!!row.item.cloudNewer" :thumb-token="String(row.item.local ? (row.item.local.updatedAt||0) : (row.t.cloud && row.t.cloud.lastModifiedDateTime || row.t.size || 0))" :fallback="row.t.displayName.slice(0,1) || '?'" :fallback-html="phHtml(row.t.name)" :alt="row.t.name" @unlock="onUnlock" />
+            <ThumbCell :enc-name="row.t.encrypted && hasThumb(row.t.name) ? row.t.name : null" :fetchable="!row.t.encrypted && (row.t.hasCloud || row.t.hasLocal) && hasThumb(row.t.name)" :is-cloud="!row.t.hasLocal && row.t.hasCloud" :cloud-newer="row.t.cloudNewer" :thumb-token="String(row.t.time || row.t.size || 0)" :fallback="row.t.displayName.slice(0,1) || '?'" :fallback-html="phHtml(row.t.name)" :alt="row.t.name" @unlock="onUnlock" />
             <div class="gallery-tile-name-row">
               <span v-if="row.t.isActive" class="gallery-tile-active-tag">{{ L.activeTag }}</span>
               <div class="gallery-tile-name" :title="row.t.fullPath"><span v-if="row.marker==='unread'" class="gallery-marker unread" :title="L.unread"></span>{{ row.t.displayName }}</div>
@@ -461,9 +461,9 @@ const GALLERY_TEMPLATE = `
                 <button v-if="row.t.badge==='cloudOnly'" type="button" @click="keepOffline(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#local-cache"/></svg><span>{{ L.keepOffline }}</span></button>
                 <button v-if="row.t.badge==='localOnly' || row.t.badge==='float'" type="button" @click="push(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cloud-upload"/></svg><span>{{ L.pushCloud }}</span></button>
                 <button v-if="row.t.badge==='dirtyBoth' || row.t.badge==='conflictBoth'" type="button" @click="push(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cloud-upload"/></svg><span>{{ L.pushCloud }}</span></button>
-                <button v-if="row.item.local && row.item.cloud" type="button" @click="unload(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#unload-local-cache"/></svg><span>{{ L.unloadLocal }}</span></button>
-                <button v-if="hasEncryption && row.item.local && !row.t.encrypted" type="button" @click="encryptItem(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#lock"/></svg><span>{{ L.encrypt }}</span></button>
-                <button v-if="hasEncryption && row.item.local && row.t.encrypted" type="button" @click="decryptItem(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#unlock"/></svg><span>{{ L.decrypt }}</span></button>
+                <button v-if="row.t.hasLocal && row.t.hasCloud" type="button" @click="unload(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#unload-local-cache"/></svg><span>{{ L.unloadLocal }}</span></button>
+                <button v-if="hasEncryption && row.t.hasLocal && !row.t.encrypted" type="button" @click="encryptItem(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#lock"/></svg><span>{{ L.encrypt }}</span></button>
+                <button v-if="hasEncryption && row.t.hasLocal && row.t.encrypted" type="button" @click="decryptItem(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#unlock"/></svg><span>{{ L.decrypt }}</span></button>
                 <button type="button" class="danger" @click="del(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.toTrash }}</span></button>
               </template>
             </div>
