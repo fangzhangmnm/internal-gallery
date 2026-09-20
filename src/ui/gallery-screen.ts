@@ -76,6 +76,8 @@ export interface GalleryScreenDeps {
   reportError: (err: unknown, level?: "error" | "warning" | "info" | "log") => void;
   openDiag?: () => void;
   reloadApp?: () => void;
+  /** 0.3.1：改名 / 移动成功后（裸名 from → to）通知宿主搬伴生数据（JRB：阅读位置 / 切章规则按路径键）。 */
+  onRenamed?: (from: string, to: string) => void;
 }
 
 export interface GalleryHandle {
@@ -318,7 +320,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       };
 
       // ── 动词：core/verbs（红线兜底在那边）；这里只包 openMenu 收起 + reload ──
-      const verbs = createGalleryVerbs({ store: () => { const s = d.store(); if (!s) throw new Error("gallery: no library attached"); return s; }, host: d.host, doc: d.doc, naming, isZipDoc: d.isZipDoc, thumbs: d.thumbs, onEncryptionChanged: invalidateEncrypted, encryption: enc });
+      const verbs = createGalleryVerbs({ store: () => { const s = d.store(); if (!s) throw new Error("gallery: no library attached"); return s; }, host: d.host, doc: d.doc, naming, isZipDoc: d.isZipDoc, thumbs: d.thumbs, onEncryptionChanged: invalidateEncrypted, encryption: enc, ...(d.onRenamed ? { onRenamed: d.onRenamed } : {}) });
       const wrap = <A extends unknown[]>(fn: (...a: A) => Promise<void>) => async (...a: A) => { openMenu.value = null; await fn(...a); await reload(); };
       const rename = wrap((item: GItem) => verbs.rename(item));
       const move = wrap((item: GItem) => verbs.move(item, { folder: folder.value, folderNames: data.folderNames }));

@@ -2313,6 +2313,7 @@ export interface GalleryScreenDeps {
     isZipDoc?: (fullName: string) => boolean;
     // (undocumented)
     naming?: NameBoundary;
+    onRenamed?: (from: string, to: string) => void;
     // (undocumented)
     openDiag?: () => void;
     // (undocumented)
@@ -2919,6 +2920,7 @@ export interface VerbDeps {
     naming?: NameBoundary;
     // (undocumented)
     onEncryptionChanged?: (name: string) => void;
+    onRenamed?: (from: string, to: string) => void;
     // (undocumented)
     store: () => VerbStore;
     // (undocumented)

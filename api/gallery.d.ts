@@ -2123,6 +2123,8 @@ export declare interface GalleryScreenDeps {
     reportError: (err: unknown, level?: "error" | "warning" | "info" | "log") => void;
     openDiag?: () => void;
     reloadApp?: () => void;
+    /** 0.3.1：改名 / 移动成功后（裸名 from → to）通知宿主搬伴生数据（JRB：阅读位置 / 切章规则按路径键）。 */
+    onRenamed?: (from: string, to: string) => void;
 }
 
 export declare interface GallerySnapshot {
@@ -2576,6 +2578,8 @@ export declare interface VerbDeps {
     };
     onEncryptionChanged?: (name: string) => void;
     encryption?: VerbEncryption;
+    /** 0.3.1：身份变了（改名 / 移动成功后，裸名 from → to）。宿主按路径键的伴生数据（JRB：阅读位置 / 切章规则）跟着搬；不给 = 不通知。活动文档另有 doc.setName。 */
+    onRenamed?: (from: string, to: string) => void;
 }
 
 /** 编辑器侧（DocHost 的动词子集）：只管**当前打开**的那份。 */
