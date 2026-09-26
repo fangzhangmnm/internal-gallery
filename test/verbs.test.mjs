@@ -43,6 +43,41 @@ describe("verbs · rename（改名失败保输入循环重试，错误写进重�
     const { verbs, calls } = mk({ active: "猫" }); await verbs.rename(item("猫"));
     eq(calls.filter((c) => c[0] === "tryMove").length, 0);
   });
+  // 0.4.1：身份 = 全名的宿主（WXHW：naming 恒等 + display 去扩展名）——改名只编辑主干，原扩展名自动保留（user 2026-09-26「重命名的时候不应该包含扩展名(.webxiaoheiwu.zip)」）
+  const mkIdentity = (opts = {}) => {
+    const r = mk(opts);
+    const stem = (n) => n.replace(/(\.webxiaoheiwu\.zip|\.txt)$/i, "");
+    // 同一套假 store/host/doc，只换 naming
+    const store = { file: (name, o) => { r.calls.push(["file", name, o]); return { tryMove: async (to) => { r.calls.push(["tryMove", name, to]); return opts.file?.tryMove ? opts.file.tryMove(to) : { ok: true }; } }; }, files: {} };
+    const verbs = createGalleryVerbs({ store: () => store, host: r.host, doc: { renameActive: async () => null, setName() {}, push: async () => {}, unload: async () => {}, exit: async () => {}, dropCheckpoint() {} }, naming: { bare: (s) => s, full: (b) => b, display: stem }, isZipDoc: (n) => /\.zip$/i.test(n) });
+    return { ...r, verbs };
+  };
+  it("身份=全名 + display：默认值 = 去扩展名的主干；打「新名」→ tryMove 自动补回 .webxiaoheiwu.zip；toast 也只说主干", async () => {
+    const { verbs, statuses, calls } = mkIdentity({ inputs: ["新名"] });
+    await verbs.rename(item("旧书.webxiaoheiwu.zip"));
+    eq(calls.find((c) => c[0] === "input")[2], "旧书", "输入框默认值不带扩展名");
+    eq(calls.filter((c) => c[0] === "tryMove").pop()[2], "新名.webxiaoheiwu.zip", "★扩展名自动保留——删掉扩展名再确认不会把书改成无扩展名（以前会从书库消失）");
+    eq(statuses.pop()[0], t("gal.st.renamed", { to: "新名" }));
+  });
+  it("身份=全名：用户自己把扩展名打全了不重复；只改大小写/同名 → 未变；txt 稿同理", async () => {
+    let r = mkIdentity({ inputs: ["新名.webxiaoheiwu.zip"] }); await r.verbs.rename(item("旧书.webxiaoheiwu.zip"));
+    eq(r.calls.filter((c) => c[0] === "tryMove").pop()[2], "新名.webxiaoheiwu.zip", "不重复后缀");
+    r = mkIdentity({ inputs: ["旧书"] }); await r.verbs.rename(item("旧书.webxiaoheiwu.zip"));
+    eq(r.statuses.pop()[0], t("gal.st.nameUnchanged")); eq(r.calls.filter((c) => c[0] === "tryMove").length, 0);
+    r = mkIdentity({ inputs: ["日记二"] }); await r.verbs.rename(item("20260926-1a7a.txt"));
+    eq(r.calls.filter((c) => c[0] === "tryMove").pop()[2], "日记二.txt", "txt 稿保 .txt");
+  });
+  it("身份=全名：撞名重问时默认值 = 上次输入的主干（不带扩展名）", async () => {
+    const { verbs, calls } = mkIdentity({ inputs: ["猫2", "猫3"], file: { tryMove: async (to) => (to === "猫2.webxiaoheiwu.zip" ? { ok: false, where: "local" } : { ok: true }) } });
+    await verbs.rename(item("猫.webxiaoheiwu.zip"));
+    const inputCalls = calls.filter((c) => c[0] === "input");
+    eq(inputCalls.length, 2); eq(inputCalls[1][2], "猫2", "重问默认值 = 主干");
+    eq(calls.filter((c) => c[0] === "tryMove").pop()[2], "猫3.webxiaoheiwu.zip");
+  });
+  it("WeebPaint 式边界（bare/full，无 display）：行为不变——默认值 = 裸名，结果 = full(裸名)", async () => {
+    const { verbs, calls } = mk({ inputs: ["新"] }); await verbs.rename(item("猫"));
+    eq(calls.find((c) => c[0] === "input")[2], "猫"); eq(calls.filter((c) => c[0] === "tryMove").pop()[2], "新.ora");
+  });
 });
 
 describe("verbs · del（删=回收站；DelResult 诚实读）", () => {

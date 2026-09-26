@@ -83,23 +83,32 @@ export function createGalleryVerbs(d: VerbDeps) {
       return;
     }
     // v267：重名/失败要 surface——错误写进重弹的输入框标题并循环重试，输入不丢。
-    let candidate = item.name, note = "";
+    // 0.4.1（2026-09-26，WXHW user「重命名的时候不应该包含扩展名(.webxiaoheiwu.zip)」→「修」）：身份 = 全名的宿主（给了 naming.display 去扩展名）
+    //   改名**只编辑主干**：输入框默认值 = display(name)，确认后把原名被 display 去掉的那截后缀自动补回（用户自己打了同样后缀不重复）。
+    //   以前默认值 = 全名、结果原样交 tryMove：把 `.webxiaoheiwu.zip` 删掉再确认 = 文件真改成无扩展名 → 宿主不认 → 从书库消失。
+    //   裸名↔全名有边界的宿主（WeebPaint `X`↔`X.ora`，不给 display）行为不变。
+    const shown = naming.display ? naming.display(item.name) : item.name;
+    const suffix = naming.display && item.name.startsWith(shown) ? item.name.slice(shown.length) : "";
+    const withSuffix = (typed: string): string => (suffix && !typed.toLowerCase().endsWith(suffix.toLowerCase()) ? typed + suffix : typed);
+    let candidate = shown, note = "";
     while (true) {
       const input = await d.host.input(note ? t("gal.dlg.renameNote", { note }) : t("gal.dlg.rename"), candidate, { placeholder: t("gal.ph.newName") });
       if (input == null) { d.host.status(t("gal.st.cancelled")); return; }
       const trimmed = input.trim();
       if (!trimmed) { candidate = ""; note = t("gal.note.empty"); continue; }
-      if (trimmed === item.name) { d.host.status(t("gal.st.nameUnchanged")); return; }
-      const result = await d.host.busy<{ taken?: string; ok?: boolean; error?: unknown }>(t("gal.busy.rename", { name: item.name, to: trimmed }), async () => {
+      const target = withSuffix(trimmed);
+      const shownTarget = suffix ? target.slice(0, target.length - suffix.length) : target;
+      if (target === item.name) { d.host.status(t("gal.st.nameUnchanged")); return; }
+      const result = await d.host.busy<{ taken?: string; ok?: boolean; error?: unknown }>(t("gal.busy.rename", { name: shown, to: shownTarget }), async () => {
         try {
-          const r = await docFile(item.name).tryMove(naming.full(trimmed));   // 占用检查内化在 store.tryMove，不动字节直接返错
+          const r = await docFile(item.name).tryMove(naming.full(target));   // 占用检查内化在 store.tryMove，不动字节直接返错
           if (!r.ok) return { taken: whereLabel(r.where) };
-          d.host.status(t("gal.st.renamed", { to: trimmed }));
+          d.host.status(t("gal.st.renamed", { to: shownTarget }));
           return { ok: true };
         } catch (e: unknown) { return { error: errMsg(e) }; }
       });
-      if (result.taken) { candidate = trimmed; note = t("gal.note.taken", { loc: result.taken }); continue; }
-      if (result.error) { candidate = trimmed; note = t("gal.note.fail", { e: String(result.error) }); continue; }
+      if (result.taken) { candidate = shownTarget; note = t("gal.note.taken", { loc: result.taken }); continue; }
+      if (result.error) { candidate = shownTarget; note = t("gal.note.fail", { e: String(result.error) }); continue; }
       return;
     }
   }
