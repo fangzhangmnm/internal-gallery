@@ -1,6 +1,6 @@
 # 提案 0.5.0：回收站 + 备份箱合成「搁置区」；封面覆盖层 hook
-> created 20260929 · by Claude Fable 5.1 · as-of 分支 `wip/0.5-backup-box`（基于 0.4.1，**未发版、`package.json` 版本号未动**）
-> 状态：**等 user 批 minor**。
+> created 20260929 · by Claude Fable 5.1 · as-of 0.5.0
+> 状态：**已批、已发版 0.5.0**（user 2026-09-29「gammery当然要升」，说的是 gallery）。下文保留提案时的写法。edited by Claude Fable 5.1 2026-09-29
 
 ## 1. 起因（user 2026-09-29 原话）
 
@@ -112,7 +112,10 @@ store 早就把两端聚合的备份箱列表、恢复、彻底删、清空都�
 
 包里的 Vue 界面没有自己的浏览器测试，界面这一层是靠 WXHW 的审计和端到端验的。真机没测过。WeebPaint / CatsUp / JRB 没有拿未发版构建跑过（只做了 grep 级的兼容核对）。
 
-## 8. 批了之后我做什么
+## 8. 发版之后
 
-分支并回 main → 写 0.5.0 → `npm run release` → tag + gh release → WXHW 收货（接线已在 WXHW 分支 `wip/backup-box` 写好并验过）。
-其余三家要不要上备份箱外壳，各家自己的 session 定。
+WXHW 收货的接线已在 WXHW 分支 `wip/backup-box` 写好并验过；它同时依赖 store 的 `docExts`（另一份提案，库仓 `20260813 internal-store/ai-docs/20260929-proposal-doc-exts.md`），那边没定之前 WXHW 不并 main。
+其余三家（WeebPaint / CatsUp / JRB）收货 0.5.0 应当零改动就能编译；要不要上备份箱外壳，各家自己的 session 定。
+
+宿主接备份箱的最小外壳（WXHW 的写法）：一个入口钮 + 一条栏（回到文件 / 回收站和备份箱两个页签 / 清空），
+分别调 `handle.setView("trash" | "backup" | "files")`、`handle.emptyTrash(scope)` / `handle.emptyBackup(scope)`。列表、恢复、彻底删、确认框、结果提示都是包的。
