@@ -10,19 +10,11 @@
 import { isCached, isDirty, type SyncState } from "@internal/store";
 import { t } from "../text.ts";
 import { pathBasename } from "./gallery-path.ts";
-import type { CloudFile, LocalSession } from "./gallery-model.ts";
+import type { AsideItem } from "./aside.ts";
 
-// 回收站项的本地 / 云端元字段（只回收站用：trashKey / cloudItemId / 缩略图 Blob）。**文件项（GItem）0.4.0 起不再有 local/cloud 对象**。
-export interface LocalSessionMeta extends LocalSession {
-  size?: number;
-  thumb?: Blob | null;
-  encrypted?: boolean;
-  trashKey?: string;
-}
-export interface CloudFileMeta extends CloudFile {
-  id?: string;
-  size?: number;
-}
+// （0.5.0：回收站专用的 LocalSessionMeta / CloudFileMeta / TrashGItem / TrashTile / trashTileFor 退役——
+//   它们是 WeebPaint 本地 session 时代的形状（thumb / updatedAt / size 这些字段数据面从来没填过），
+//   回收站和备份箱现在共用 core/model/aside.ts 的 AsideItem。）
 
 /** 0.4.0（user 2026-09-19「gallery 该直接吃 syncState」）：图库消费的文件项 = store Item 的裸名视图。
  *  **唯一状态源 = syncState（store 9 态）**；徽章 / 菜单 / 缩略图来源全从它算，本包不再派生 local/cloud/dirty/ghost… 一堆布尔
@@ -105,25 +97,12 @@ export function breadcrumb(folder: string): Crumb[] {
   return out;
 }
 
-// 回收站 tile：来源标签 + 删除时间 + thumb 线索。
-export interface TrashTile {
+// 搁置区 tile（回收站 / 备份箱）：在哪一端 + 什么时候挪到一边的。
+export interface AsideTile {
+  key: string;
   name: string;
-  deletedAt: number;
-  source: string;        // 本地 / 云端 / 本地+云端
-  hasLocalThumb: boolean;
-  cloud: CloudFileMeta | null;
-  local: LocalSessionMeta | null;
-}
-
-// 回收站 item：deletedAt + 本地 trash 记录（含 thumb / trashKey）+ 云端文件。
-//   encrypted：云端字节是加密容器（restore 落 encFileName）。conflictLive：离线删被 edit-wins 撤销 → 本地 trash 有、云端还活着（两存，UI surface）。
-export interface TrashGItem {
-  name: string;
-  deletedAt?: number;
-  local: LocalSessionMeta | null;
-  cloud: CloudFileMeta | null;
-  encrypted?: boolean;
-  conflictLive?: boolean;
+  at: number;
+  source: string;        // 本地 / 云端 / 本地+云端（回收站另有「云端仍在」）
 }
 
 // 展示格式化（纯）。humanTime 读 now：组件用，测试只覆 humanSize。
@@ -148,15 +127,12 @@ export function humanSize(b: number | null | undefined): string {
   return `${(b / 1073741824).toFixed(2)} GiB`;
 }
 
-export function trashTileFor(item: TrashGItem): TrashTile {
-  const base = item.local && item.cloud ? t("gv.src.both") : item.local ? t("gv.src.local") : t("gv.src.cloud");
-  const src = item.conflictLive ? t("gv.src.cloudStillAlive", { base }) : base;   // 离线删被撤销：本地 trash 有、云端还活着 → 提示两存
-  return {
-    name: item.name,
-    deletedAt: item.deletedAt || 0,
-    source: src,
-    hasLocalThumb: !!(item.local && item.local.thumb),
-    cloud: item.cloud || null,
-    local: item.local || null,
-  };
+export function asideTileFor(item: AsideItem): AsideTile {
+  const base = item.side === "both" ? t("gv.src.both") : item.side === "local" ? t("gv.src.local") : t("gv.src.cloud");
+  const source = item.conflictLive ? t("gv.src.cloudStillAlive", { base }) : base;   // 离线删被撤销：本地回收站有、云端还活着 → 提示两存
+  return { key: item.key, name: item.name, at: item.at, source };
+}
+/** 完整钟点（卡片副行的 tooltip：同一份稿一小时内留了两版底，「1 小时前」分不出来）。 */
+export function fullTime(ts: number): string {
+  return ts ? new Date(ts).toLocaleString() : t("gv.time.unknown");
 }

@@ -13,7 +13,8 @@ function mk({ file = {}, files = {}, inputs = [], confirms = [], active = null, 
     encrypt: async () => file.encrypt ? file.encrypt() : { status: "ok" }, decrypt: async () => ({ status: "ok" }),
     keepOffline: async () => { calls.push(["keepOffline", name]); if (file.keepOffline) return file.keepOffline(); },
   }; };
-  const store = { file: fileObj, files: { nameOccupied: async () => false, deleteFolder: async (p) => files.deleteFolder?.(p), restoreTrash: async (o) => { calls.push(["restore", o]); return files.restore ? files.restore(o) : {}; }, purgeTrash: async (o) => { calls.push(["purge", o]); }, emptyTrash: async (o) => files.emptyTrash ? files.emptyTrash(o) : { failed: [] } } };
+  const store = { file: fileObj, files: { nameOccupied: async () => false, deleteFolder: async (p) => files.deleteFolder?.(p), restoreTrash: async (o) => { calls.push(["restore", o]); return files.restore ? files.restore(o) : {}; }, purgeTrash: async (o) => { calls.push(["purge", o]); }, emptyTrash: async (o) => { calls.push(["emptyTrash", o]); return files.emptyTrash ? files.emptyTrash(o) : { failed: [] }; },
+    emptyBackup: async (o) => { calls.push(["emptyBackup", o]); return files.emptyBackup ? files.emptyBackup(o) : { failed: [] }; } } };
   const host = { signedIn: () => signedIn, online: () => online, activeName: () => active,
     confirm: async () => (confirms.length ? confirms.shift() : true), input: async (title, def) => { calls.push(["input", title, def]); return inputs.length ? inputs.shift() : null; },
     chooseFolder: async (_t, _m, opts) => (host._pick ? host._pick(opts) : opts[0]?.value ?? null), status: (m, e) => statuses.push([m, !!e]), busy: async (_l, fn) => fn() };
@@ -108,7 +109,7 @@ describe("verbs · move（目标只有上级 + 可见子夹，根置顶，绝不
   });
 });
 
-describe("verbs · copy / reupload / emptyTrash / trashRestore", () => {
+describe("verbs · copy / reupload", () => {
   it("copy：加密源原样搬密文（不 open）；目标名同夹「副本」按当前夹去重；新身份 mode:new，tryPush 跟登录+在线", async () => {
     const enc = new Blob(["CIPHER"]);
     const r = mk({ file: { enc, plain: new Blob(["PLAIN"]) } });
@@ -122,18 +123,54 @@ describe("verbs · copy / reupload / emptyTrash / trashRestore", () => {
     r = mk({ file: { reupload: async () => { const e = new Error("x"); e.name = "CloudNameCollisionError"; throw e; } } }); await r.verbs.reupload(item("a")); eq(r.statuses.pop()[0], t("gal.st.reuploadConflict", { name: "a" }));
     r = mk(); await r.verbs.reupload(item("a")); eq(r.statuses.pop()[0], t("gal.st.reuploaded", { name: "a" }));
   });
-  it("emptyTrash：云端失败必说；只本地失败 → 部分；全成 → 完成；cloud scope 离线 → 要登录", async () => {
-    let r = mk({ files: { emptyTrash: async () => ({ failed: [{ where: "cloud" }, { where: "local" }] }) } }); await r.verbs.emptyTrash("both"); eq(r.statuses.pop()[0], t("gal.st.emptyTrashCloudFail", { n: 1 }));
-    r = mk({ files: { emptyTrash: async () => ({ failed: [{ where: "local" }] }) } }); await r.verbs.emptyTrash("local"); eq(r.statuses.pop()[0], t("gal.st.emptyTrashPartial"));
-    r = mk(); await r.verbs.emptyTrash("local"); eq(r.statuses.pop()[1], false);
-    r = mk({ online: false }); await r.verbs.emptyTrash("cloud"); eq(r.statuses.pop()[0], t("gal.st.emptyTrashCloudNeedLogin"));
+});
+
+describe("verbs · 搁置区（回收站 / 备份箱同一套动词，差异只在 ASIDE 表）", () => {
+  const row = (kind, extra = {}) => ({ kind, key: `${kind}|k|c`, name: "a", at: 0, side: "both", localKey: "k", cloudRef: "c", encrypted: false, conflictLive: false, ...extra });
+  it("emptyAside(trash)：云端失败必说；只本地失败 → 部分；全成 → 完成；cloud scope 离线 → 要登录；只调 emptyTrash", async () => {
+    let r = mk({ files: { emptyTrash: async () => ({ failed: [{ where: "cloud" }, { where: "local" }] }) } }); await r.verbs.emptyAside("trash", "both"); eq(r.statuses.pop()[0], t("gal.st.emptyTrashCloudFail", { n: 1 }));
+    r = mk({ files: { emptyTrash: async () => ({ failed: [{ where: "local" }] }) } }); await r.verbs.emptyAside("trash", "local"); eq(r.statuses.pop()[0], t("gal.st.emptyTrashPartial"));
+    r = mk(); await r.verbs.emptyAside("trash", "local"); eq(r.statuses.pop()[1], false);
+    eq(r.calls.filter((c) => c[0] === "emptyTrash").length, 1); eq(r.calls.filter((c) => c[0] === "emptyBackup").length, 0, "清回收站绝不碰备份箱");
+    r = mk({ online: false }); await r.verbs.emptyAside("trash", "cloud"); eq(r.statuses.pop()[0], t("gal.st.emptyTrashCloudNeedLogin"));
+    eq(r.calls.filter((c) => c[0] === "emptyTrash").length, 0, "离线清云端：没发起");
   });
-  it("trashRestore：目标转全名、加密旗透传；库改名恢复 → 文案说明新名", async () => {
-    const r = mk({ files: { restore: async () => ({ name: "a 1.ora" }) } });
-    await r.verbs.trashRestore({ name: "a", local: { trashKey: "k" }, cloud: { id: "c" }, encrypted: true });
-    const o = r.calls.find((c) => c[0] === "restore")[1];
-    eq(o.targetName, "a.ora"); eq(o.encrypted, true); eq(o.trashKey, "k"); eq(o.cloudRef, "c");
-    eq(r.statuses.pop()[0], t("gal.st.restoredRenamed", { name: "a 1", orig: "a" }));
+  it("emptyAside(backup)：只调 emptyBackup、scope 透传、文案说的是备份箱", async () => {
+    let r = mk(); await r.verbs.emptyAside("backup", "local");
+    eq(r.calls.filter((c) => c[0] === "emptyBackup").length, 1); eq(r.calls.find((c) => c[0] === "emptyBackup")[1].scope, "local");
+    eq(r.calls.filter((c) => c[0] === "emptyTrash").length, 0, "清备份箱绝不碰回收站");
+    const done = r.statuses.pop(); eq(done[0], t("gal.st.emptyBackupDone", { label: t("gal.scope.local") })); eq(done[1], false);
+    r = mk({ files: { emptyBackup: async () => ({ failed: [{ where: "cloud" }] }) } }); await r.verbs.emptyAside("backup"); eq(r.statuses.pop()[0], t("gal.st.emptyBackupCloudFail", { n: 1 }));
+    r = mk({ signedIn: false }); await r.verbs.emptyAside("backup", "cloud"); eq(r.statuses.pop()[0], t("gal.st.emptyBackupCloudNeedLogin"));
+  });
+  it("emptyAside：用户在确认框点了取消 → 什么都不发起；store 抛错 → 报失败，不报成功", async () => {
+    let r = mk({ confirms: [false] }); await r.verbs.emptyAside("backup", "both");
+    eq(r.calls.filter((c) => c[0] === "emptyBackup").length, 0); eq(r.statuses.length, 0);
+    r = mk({ files: { emptyBackup: async () => { throw new Error("idb wedged"); } } }); await r.verbs.emptyAside("backup", "both");
+    const st = r.statuses.pop(); eq(st[1], true); assert(st[0].includes("idb wedged"), st[0]);
+  });
+  it("asideRestore：目标转全名、加密旗透传；库改名恢复 → 文案说明新名（回收站 / 备份箱同一条路）", async () => {
+    for (const kind of ["trash", "backup"]) {
+      const r = mk({ files: { restore: async () => ({ name: "a 1.ora" }) } });
+      await r.verbs.asideRestore(row(kind, { encrypted: true }));
+      const o = r.calls.find((c) => c[0] === "restore")[1];
+      eq(o.targetName, "a.ora"); eq(o.encrypted, true); eq(o.trashKey, "k"); eq(o.cloudRef, "c"); eq(o.fromCloud, true);
+      eq(r.statuses.pop()[0], t("gal.st.restoredRenamed", { name: "a 1", orig: "a" }));
+    }
+  });
+  it("asideRestore：只在本地的一条 → 不走云端腿；失败 → 报失败", async () => {
+    let r = mk(); await r.verbs.asideRestore(row("backup", { side: "local", cloudRef: null }));
+    const o = r.calls.find((c) => c[0] === "restore")[1]; eq(o.fromCloud, false); eq(o.cloudRef, null); eq(o.trashKey, "k");
+    eq(r.statuses.pop()[0], t("gal.st.restored", { name: "a" }));
+    r = mk({ files: { restore: async () => { throw new Error("nope"); } } }); await r.verbs.asideRestore(row("backup"));
+    eq(r.statuses.pop()[1], true);
+  });
+  it("asidePurge：先确认；取消 → 不删；确认 → 两把钥匙原样交给 store", async () => {
+    let r = mk({ confirms: [false] }); await r.verbs.asidePurge(row("backup"));
+    eq(r.calls.filter((c) => c[0] === "purge").length, 0);
+    r = mk(); await r.verbs.asidePurge(row("backup"));
+    const o = r.calls.find((c) => c[0] === "purge")[1]; eq(o.trashKey, "k"); eq(o.cloudRef, "c");
+    eq(r.statuses.pop()[0], t("gal.st.purged", { name: "a" }));
   });
 });
 

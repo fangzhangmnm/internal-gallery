@@ -2,7 +2,7 @@ import { describe, it, eq, assert } from "./runner.mjs";
 import { createGalleryDataFace, galleryItemFromStoreItem } from "../src/core/data-face.ts";
 
 const item = (path, syncState, extra = {}) => ({ path, syncState, ...extra });
-const fakeStore = (snap) => ({ files: { watchFolder: (folder, cb) => { cb({ path: folder, ...snap, complete: true }); return () => {}; }, listTrash: async () => [] }, file: () => ({ open: async () => null }) });
+const fakeStore = (snap) => ({ files: { watchFolder: (folder, cb) => { cb({ path: folder, ...snap, complete: true }); return () => {}; }, listTrash: async () => [], listBackup: async () => [] }, file: () => ({ open: async () => null }) });
 
 describe("data-face · store.Item → GItem（0.4.0：syncState 原样透传，不派生布尔）", () => {
   it("name 裸名 + syncState + size/lastModified；没有 local/cloud/dirty 字段", () => {

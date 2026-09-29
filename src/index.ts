@@ -8,6 +8,7 @@ export * from "./core/model/gallery-model.ts";
 export * from "./core/model/gallery-path.ts";
 export * from "./core/model/natural-order.ts";
 export * from "./core/model/gallery-view-model.ts";
+export type { AsideKind, AsideScope, AsideItem, AsideEmptyResult } from "./core/model/aside.ts";   // 0.5.0：搁置区（回收站 / 备份箱）只出类型；差异表 ASIDE 不出门
 export * from "./core/model/cloud-image-model.ts";
 export * from "./core/guards/frame-gate.ts";
 export * from "./core/guards/first-frame-watchdog.ts";

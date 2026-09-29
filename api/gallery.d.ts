@@ -13,6 +13,43 @@ export declare function activeGalleryId(): string;
 /** 面积平均缩小（straight RGBA → straight RGBA；premult 累加、反预乘）。放大时退化为近似盒复制，别用。 */
 export declare function areaResampleRgba(src: Uint8ClampedArray, sw: number, sh: number, tw: number, th: number): Uint8ClampedArray;
 
+export declare interface AsideEmptyResult {
+    failed?: {
+        where?: string;
+    }[];
+}
+
+/** 搁置区的一行（只元数据，无字节）。 */
+export declare interface AsideItem {
+    kind: AsideKind;
+    /** 列表内唯一（同名可以有很多条：同一份稿留过好几版底）。 */
+    key: string;
+    /** 裸名 = 展示名 = 恢复目标名。 */
+    name: string;
+    /** 挪到一边的时刻（ms）；解析不出 = 0。 */
+    at: number;
+    side: "local" | "cloud" | "both";
+    localKey: string | null;
+    cloudRef: string | null;
+    /** 云端字节是加密容器（恢复时落加密名）。 */
+    encrypted: boolean;
+    /** 只回收站：离线删被「编辑赢」撤销 → 本地回收站有、云端还活着（两存，界面要说）。备份箱恒 false。 */
+    conflictLive: boolean;
+}
+
+export declare type AsideKind = "trash" | "backup";
+
+export declare type AsideScope = "local" | "cloud" | "both";
+
+export declare interface AsideTile {
+    key: string;
+    name: string;
+    at: number;
+    source: string;
+}
+
+export declare function asideTileFor(item: AsideItem): AsideTile;
+
 export declare interface AttachmentDeps {
     storeAbsent: boolean;
     buildStore: (entry: GalleryEntry) => SwappableStore;
@@ -195,11 +232,6 @@ export declare interface CloudFile {
     lastModifiedDateTime?: string;
 }
 
-export declare interface CloudFileMeta extends CloudFile {
-    id?: string;
-    size?: number;
-}
-
 export declare interface CloudImageItem {
     path: string;
     name: string;
@@ -277,8 +309,9 @@ export declare function createGalleryDataFace(deps: {
         folderNames: string[];
     }) => void): () => void;
     openCloudImage: (path: string) => Promise<Blob | null>;
-    /** 回收站：store 两端聚合的 TrashItem[] → TrashGItem（只元数据，无 blob）。 */
-    listTrash: () => Promise<TrashGItem[]>;
+    /** 搁置区（0.5.0；回收站 / 备份箱同一个面）：store 两端聚合的 TrashItem[] → AsideItem（只元数据，无 blob），新的在前。
+     *  读哪个列表由 ASIDE 表定；列表只来自 store，宿主没有注入口。 */
+    listAside: (kind: AsideKind) => Promise<AsideItem[]>;
 };
 
 export declare interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thumbs" | "store"> {
@@ -327,9 +360,9 @@ export declare function createGalleryVerbs(d: VerbDeps): {
         name: string;
         path: string;
     }) => Promise<void>;
-    trashRestore: (item: TrashGItem) => Promise<void>;
-    trashPurge: (item: TrashGItem) => Promise<void>;
-    emptyTrash: (scope?: "local" | "cloud" | "both") => Promise<void>;
+    asideRestore: (item: AsideItem) => Promise<void>;
+    asidePurge: (item: AsideItem) => Promise<void>;
+    emptyAside: (kind: AsideKind, scope?: AsideScope) => Promise<void>;
     encryptItem: (item: GItem) => Promise<void>;
     decryptItem: (item: GItem) => Promise<void>;
     unlock: (name: string) => Promise<boolean>;
@@ -365,6 +398,7 @@ export declare interface DataFaceStore {
             onError?: (err: unknown, phase: WatchFolderErrorPhase) => void;
         }): () => void;
         listTrash(): Promise<TrashItem[]>;
+        listBackup(): Promise<TrashItem[]>;
     };
     file(name: string, opts: {
         isZip: false;
@@ -482,6 +516,9 @@ export declare interface FrameGateTimers {
     set(fn: () => void, ms: number): unknown;
     clear(handle: unknown): void;
 }
+
+/** 完整钟点（卡片副行的 tooltip：同一份稿一小时内留了两版底，「1 小时前」分不出来）。 */
+export declare function fullTime(ts: number): string;
 
 export declare interface Gallery {
     handle: GalleryHandle;
@@ -760,6 +797,11 @@ export declare const GALLERY_TEXT: {
         readonly en: "Deleting {name}…";
         readonly ja: "削除中 {name}…";
     };
+    readonly "gal.busy.emptyBackup": {
+        readonly zh: "正在清空{label}备份箱…";
+        readonly en: "Emptying {label} backups…";
+        readonly ja: "{label}のバックアップを空に…";
+    };
     readonly "gal.busy.emptyTrash": {
         readonly zh: "正在清空{label}回收站…";
         readonly en: "Emptying {label} trash…";
@@ -870,6 +912,16 @@ export declare const GALLERY_TEXT: {
         readonly en: "Delete “{name}”?";
         readonly ja: "「{name}」を削除？";
     };
+    readonly "gal.dlg.emptyBackupMsg": {
+        readonly zh: "{label}备份箱里留底的版本会被彻底删除，不可撤销。";
+        readonly en: "Versions kept in the {label} backups will be permanently deleted. Cannot be undone.";
+        readonly ja: "{label}のバックアップに保管されたバージョンを完全に削除します。元に戻せません。";
+    };
+    readonly "gal.dlg.emptyBackupTitle": {
+        readonly zh: "清空{label}备份箱？";
+        readonly en: "Empty {label} backups?";
+        readonly ja: "{label}のバックアップを空に？";
+    };
     readonly "gal.dlg.emptyTrashMsg": {
         readonly zh: "{label}回收站会被彻底清空，不可撤销。";
         readonly en: "The {label} trash will be permanently emptied. Cannot be undone.";
@@ -909,6 +961,11 @@ export declare const GALLERY_TEXT: {
         readonly zh: "重命名（{note}）";
         readonly en: "Rename ({note})";
         readonly ja: "名前を変更（{note}）";
+    };
+    readonly "gal.empty.backup": {
+        readonly zh: "备份箱是空的。同步冲突里被换下的那一版会留在这里。";
+        readonly en: "No backups. When a sync conflict replaces a version, the replaced one is kept here.";
+        readonly ja: "バックアップはありません。同期の競合で置き換えられたバージョンはここに保管されます。";
     };
     readonly "gal.empty.folder": {
         readonly zh: "文件夹 \"{f}\" 是空的";
@@ -954,6 +1011,11 @@ export declare const GALLERY_TEXT: {
         readonly zh: "留一份离线";
         readonly en: "Keep offline";
         readonly ja: "オフライン用に保存";
+    };
+    readonly "gal.keptAside": {
+        readonly zh: "留底";
+        readonly en: "kept";
+        readonly ja: "保管";
     };
     readonly "gal.loading": {
         readonly zh: "加载中…";
@@ -1179,6 +1241,26 @@ export declare const GALLERY_TEXT: {
         readonly zh: "已删除：{name}";
         readonly en: "Deleted: {name}";
         readonly ja: "削除：{name}";
+    };
+    readonly "gal.st.emptyBackupCloudFail": {
+        readonly zh: "{n} 项云端没清（可能离线），回线再清";
+        readonly en: "{n} cloud item(s) not cleared (maybe offline); retry when online";
+        readonly ja: "{n} 件がクラウドで未削除（オフライン？）。オンライン復帰後に再試行";
+    };
+    readonly "gal.st.emptyBackupCloudNeedLogin": {
+        readonly zh: "清空云端备份箱需先登录并联网";
+        readonly en: "Emptying cloud backups requires sign-in and network";
+        readonly ja: "クラウドのバックアップを空にするにはサインインと接続が必要です";
+    };
+    readonly "gal.st.emptyBackupDone": {
+        readonly zh: "已清空{label}备份箱";
+        readonly en: "Emptied {label} backups";
+        readonly ja: "{label}のバックアップを空にしました";
+    };
+    readonly "gal.st.emptyBackupPartial": {
+        readonly zh: "清空时部分失败";
+        readonly en: "Some items failed to clear";
+        readonly ja: "一部の削除に失敗しました";
     };
     readonly "gal.st.emptyTrashCloudFail": {
         readonly zh: "{n} 项云端没清（可能离线），回线再清";
@@ -2022,12 +2104,15 @@ export declare interface GalleryEntry {
 
 export declare interface GalleryHandle {
     refresh(): void;
-    setView(v: "files" | "trash"): void;
-    getView(): "files" | "trash";
+    setView(v: GalleryView): void;
+    getView(): GalleryView;
     setFolder(path: string): void;
     hydrateFolder(path: string): void;
     getFolder(): string;
-    emptyTrash(scope?: "local" | "cloud" | "both"): void;
+    /** 清空回收站（只清回收站，和当前开着哪个视图无关）。 */
+    emptyTrash(scope?: AsideScope): void;
+    /** 0.5.0：清空备份箱（只清备份箱，和当前开着哪个视图无关）。 */
+    emptyBackup(scope?: AsideScope): void;
     requestUnlock(): Promise<boolean>;
     invalidateEncrypted(name: string): void;
     /** 0.3.0：布局即时切换（用户偏好记不记住归宿主）。 */
@@ -2095,6 +2180,11 @@ export declare interface GalleryScreenDeps {
         }) => string;
         /** 0.1.2：无缩略图时卡片占位内容（HTML，通常是一枚图标）。不给 → 退回名字首字（WeebPaint 默认；WXHW 2026-09-10 user「所有的预览图都是 2……不要从名字生成」→ 宿主给 book/file 图标）。 */
         tilePlaceholderHtml?: (name: string) => string | undefined;
+        /** 0.5.0：盖在文档卡片封面上的一层宿主内容（HTML）。**有没有缩略图都画**——缩略图只是背景
+         *  （WXHW 2026-09-29 user「字的逻辑一样，无视是否有图，图只是背景」）。文件 / 回收站 / 备份箱的卡片都走它；文件夹、图片、杂物卡片不走。
+         *  包只给一个铺满封面、不吃指针事件的槽（`.gallery-tile-overlay`，紧跟在缩略图元素后面，宿主 CSS 可以用相邻选择器区分底下是图还是占位），
+         *  里面画什么、怎么排版全归宿主；包不因为有没有这一层改变任何别的行为。列表布局不画。不给 / 返回空 = 不画。 */
+        tileOverlayHtml?: (name: string) => string | undefined;
     };
     /** 0.2.0：卡片比例。"1/1" 方图（WeebPaint 默认）；"2/3" 竖版书封（WXHW 书库；窄屏一排三本）。
      *  0.3.0（JRB 第三消费者，提案 ai-docs/20260919-proposal-list-view.md）：layout "list" = 一行一件、名字整行（最多折两行不截断）、副标题一行、右侧 ⋯；
@@ -2159,6 +2249,9 @@ export declare interface GalleryTile {
 }
 
 export declare type GalleryVerbs = ReturnType<typeof createGalleryVerbs>;
+
+/** 图库一屏能开的视图：文件 + 两个搁置区（回收站 / 备份箱，0.5.0）。 */
+export declare type GalleryView = "files" | AsideKind;
 
 /** 0.4.0（user 2026-09-19「gallery 该直接吃 syncState」）：图库消费的文件项 = store Item 的裸名视图。
  *  **唯一状态源 = syncState（store 9 态）**；徽章 / 菜单 / 缩略图来源全从它算，本包不再派生 local/cloud/dirty/ghost… 一堆布尔
@@ -2242,13 +2335,6 @@ export declare interface LibraryManifest {
 export declare interface LocalSession {
     name: string;
     updatedAt?: number;
-}
-
-export declare interface LocalSessionMeta extends LocalSession {
-    size?: number;
-    thumb?: Blob | null;
-    encrypted?: boolean;
-    trashKey?: string;
 }
 
 /** 自适应缩略图：阶梯逐档、每档先无损后调色板，第一个 ≤ maxBytes 的胜出；都超 → 最小档调色板。 */
@@ -2553,26 +2639,6 @@ export declare function tileFor(item: GItem, opts: {
 /** 复制/展示用的整段文本：环境头 + 每条一行「MM-DD HH:MM:SS.mmm L msg」（旧在上、新在下）。 */
 declare function toText(): string;
 
-export declare interface TrashGItem {
-    name: string;
-    deletedAt?: number;
-    local: LocalSessionMeta | null;
-    cloud: CloudFileMeta | null;
-    encrypted?: boolean;
-    conflictLive?: boolean;
-}
-
-export declare interface TrashTile {
-    name: string;
-    deletedAt: number;
-    source: string;
-    hasLocalThumb: boolean;
-    cloud: CloudFileMeta | null;
-    local: LocalSessionMeta | null;
-}
-
-export declare function trashTileFor(item: TrashGItem): TrashTile;
-
 export declare function uniqueBareName(stem: string, occupied: (fullName: string) => Promise<unknown>, naming?: NameBoundary): Promise<string>;
 
 export declare interface VerbDeps {
@@ -2680,12 +2746,11 @@ export declare interface VerbStore {
             cloudRef: string | null;
         }): Promise<unknown>;
         emptyTrash(o: {
-            scope: "local" | "cloud" | "both";
-        }): Promise<{
-            failed?: {
-                where?: string;
-            }[];
-        }>;
+            scope: AsideScope;
+        }): Promise<AsideEmptyResult>;
+        emptyBackup(o: {
+            scope: AsideScope;
+        }): Promise<AsideEmptyResult>;
     };
 }
 

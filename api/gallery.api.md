@@ -21,6 +21,52 @@ export function activeGalleryId(): string;
 export function areaResampleRgba(src: Uint8ClampedArray, sw: number, sh: number, tw: number, th: number): Uint8ClampedArray;
 
 // @public (undocumented)
+export interface AsideEmptyResult {
+    // (undocumented)
+    failed?: {
+        where?: string;
+    }[];
+}
+
+// @public
+export interface AsideItem {
+    at: number;
+    // (undocumented)
+    cloudRef: string | null;
+    conflictLive: boolean;
+    encrypted: boolean;
+    key: string;
+    // (undocumented)
+    kind: AsideKind;
+    // (undocumented)
+    localKey: string | null;
+    name: string;
+    // (undocumented)
+    side: "local" | "cloud" | "both";
+}
+
+// @public (undocumented)
+export type AsideKind = "trash" | "backup";
+
+// @public (undocumented)
+export type AsideScope = "local" | "cloud" | "both";
+
+// @public (undocumented)
+export interface AsideTile {
+    // (undocumented)
+    at: number;
+    // (undocumented)
+    key: string;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    source: string;
+}
+
+// @public (undocumented)
+export function asideTileFor(item: AsideItem): AsideTile;
+
+// @public (undocumented)
 export interface AttachmentDeps {
     // (undocumented)
     buildStore: (entry: GalleryEntry) => SwappableStore;
@@ -287,14 +333,6 @@ export interface CloudFile {
 }
 
 // @public (undocumented)
-export interface CloudFileMeta extends CloudFile {
-    // (undocumented)
-    id?: string;
-    // (undocumented)
-    size?: number;
-}
-
-// @public (undocumented)
 export interface CloudImageItem {
     // (undocumented)
     cached: boolean;
@@ -386,7 +424,7 @@ export function createGalleryDataFace(deps: {
         folderNames: string[];
     }) => void): () => void;
     openCloudImage: (path: string) => Promise<Blob | null>;
-    listTrash: () => Promise<TrashGItem[]>;
+    listAside: (kind: AsideKind) => Promise<AsideItem[]>;
 };
 
 // @public (undocumented)
@@ -441,9 +479,9 @@ export function createGalleryVerbs(d: VerbDeps): {
         name: string;
         path: string;
     }) => Promise<void>;
-    trashRestore: (item: TrashGItem) => Promise<void>;
-    trashPurge: (item: TrashGItem) => Promise<void>;
-    emptyTrash: (scope?: "local" | "cloud" | "both") => Promise<void>;
+    asideRestore: (item: AsideItem) => Promise<void>;
+    asidePurge: (item: AsideItem) => Promise<void>;
+    emptyAside: (kind: AsideKind, scope?: AsideScope) => Promise<void>;
     encryptItem: (item: GItem) => Promise<void>;
     decryptItem: (item: GItem) => Promise<void>;
     unlock: (name: string) => Promise<boolean>;
@@ -496,6 +534,7 @@ export interface DataFaceStore {
             onError?: (err: unknown, phase: WatchFolderErrorPhase) => void;
         }): () => void;
         listTrash(): Promise<TrashItem[]>;
+        listBackup(): Promise<TrashItem[]>;
     };
 }
 
@@ -641,6 +680,9 @@ export interface FrameGateTimers {
     // (undocumented)
     set(fn: () => void, ms: number): unknown;
 }
+
+// @public
+export function fullTime(ts: number): string;
 
 // @public (undocumented)
 export interface Gallery {
@@ -925,6 +967,11 @@ export const GALLERY_TEXT: {
         readonly en: "Deleting {name}…";
         readonly ja: "削除中 {name}…";
     };
+    readonly "gal.busy.emptyBackup": {
+        readonly zh: "正在清空{label}备份箱…";
+        readonly en: "Emptying {label} backups…";
+        readonly ja: "{label}のバックアップを空に…";
+    };
     readonly "gal.busy.emptyTrash": {
         readonly zh: "正在清空{label}回收站…";
         readonly en: "Emptying {label} trash…";
@@ -1035,6 +1082,16 @@ export const GALLERY_TEXT: {
         readonly en: "Delete “{name}”?";
         readonly ja: "「{name}」を削除？";
     };
+    readonly "gal.dlg.emptyBackupMsg": {
+        readonly zh: "{label}备份箱里留底的版本会被彻底删除，不可撤销。";
+        readonly en: "Versions kept in the {label} backups will be permanently deleted. Cannot be undone.";
+        readonly ja: "{label}のバックアップに保管されたバージョンを完全に削除します。元に戻せません。";
+    };
+    readonly "gal.dlg.emptyBackupTitle": {
+        readonly zh: "清空{label}备份箱？";
+        readonly en: "Empty {label} backups?";
+        readonly ja: "{label}のバックアップを空に？";
+    };
     readonly "gal.dlg.emptyTrashMsg": {
         readonly zh: "{label}回收站会被彻底清空，不可撤销。";
         readonly en: "The {label} trash will be permanently emptied. Cannot be undone.";
@@ -1074,6 +1131,11 @@ export const GALLERY_TEXT: {
         readonly zh: "重命名（{note}）";
         readonly en: "Rename ({note})";
         readonly ja: "名前を変更（{note}）";
+    };
+    readonly "gal.empty.backup": {
+        readonly zh: "备份箱是空的。同步冲突里被换下的那一版会留在这里。";
+        readonly en: "No backups. When a sync conflict replaces a version, the replaced one is kept here.";
+        readonly ja: "バックアップはありません。同期の競合で置き換えられたバージョンはここに保管されます。";
     };
     readonly "gal.empty.folder": {
         readonly zh: "文件夹 \"{f}\" 是空的";
@@ -1119,6 +1181,11 @@ export const GALLERY_TEXT: {
         readonly zh: "留一份离线";
         readonly en: "Keep offline";
         readonly ja: "オフライン用に保存";
+    };
+    readonly "gal.keptAside": {
+        readonly zh: "留底";
+        readonly en: "kept";
+        readonly ja: "保管";
     };
     readonly "gal.loading": {
         readonly zh: "加载中…";
@@ -1344,6 +1411,26 @@ export const GALLERY_TEXT: {
         readonly zh: "已删除：{name}";
         readonly en: "Deleted: {name}";
         readonly ja: "削除：{name}";
+    };
+    readonly "gal.st.emptyBackupCloudFail": {
+        readonly zh: "{n} 项云端没清（可能离线），回线再清";
+        readonly en: "{n} cloud item(s) not cleared (maybe offline); retry when online";
+        readonly ja: "{n} 件がクラウドで未削除（オフライン？）。オンライン復帰後に再試行";
+    };
+    readonly "gal.st.emptyBackupCloudNeedLogin": {
+        readonly zh: "清空云端备份箱需先登录并联网";
+        readonly en: "Emptying cloud backups requires sign-in and network";
+        readonly ja: "クラウドのバックアップを空にするにはサインインと接続が必要です";
+    };
+    readonly "gal.st.emptyBackupDone": {
+        readonly zh: "已清空{label}备份箱";
+        readonly en: "Emptied {label} backups";
+        readonly ja: "{label}のバックアップを空にしました";
+    };
+    readonly "gal.st.emptyBackupPartial": {
+        readonly zh: "清空时部分失败";
+        readonly en: "Some items failed to clear";
+        readonly ja: "一部の削除に失敗しました";
     };
     readonly "gal.st.emptyTrashCloudFail": {
         readonly zh: "{n} 项云端没清（可能离线），回线再清";
@@ -2201,14 +2288,14 @@ export interface GalleryEntry {
 
 // @public (undocumented)
 export interface GalleryHandle {
-    // (undocumented)
-    emptyTrash(scope?: "local" | "cloud" | "both"): void;
+    emptyBackup(scope?: AsideScope): void;
+    emptyTrash(scope?: AsideScope): void;
     // (undocumented)
     getFolder(): string;
     // (undocumented)
     getLayout(): "cards" | "list";
     // (undocumented)
-    getView(): "files" | "trash";
+    getView(): GalleryView;
     // (undocumented)
     hydrateFolder(path: string): void;
     // (undocumented)
@@ -2221,7 +2308,7 @@ export interface GalleryHandle {
     setFolder(path: string): void;
     setLayout(l: "cards" | "list"): void;
     // (undocumented)
-    setView(v: "files" | "trash"): void;
+    setView(v: GalleryView): void;
     // (undocumented)
     unmount(): void;
 }
@@ -2339,6 +2426,7 @@ export interface GalleryScreenDeps {
             cls?: string;
         }) => string;
         tilePlaceholderHtml?: (name: string) => string | undefined;
+        tileOverlayHtml?: (name: string) => string | undefined;
     };
     // (undocumented)
     vue: VueRuntime;
@@ -2403,6 +2491,9 @@ export interface GalleryTile {
 
 // @public (undocumented)
 export type GalleryVerbs = ReturnType<typeof createGalleryVerbs>;
+
+// @public
+export type GalleryView = "files" | AsideKind;
 
 // @public
 export interface GItem {
@@ -2507,18 +2598,6 @@ export interface LocalSession {
     name: string;
     // (undocumented)
     updatedAt?: number;
-}
-
-// @public (undocumented)
-export interface LocalSessionMeta extends LocalSession {
-    // (undocumented)
-    encrypted?: boolean;
-    // (undocumented)
-    size?: number;
-    // (undocumented)
-    thumb?: Blob | null;
-    // (undocumented)
-    trashKey?: string;
 }
 
 // @public
@@ -2877,41 +2956,6 @@ export function tileFor(item: GItem, opts: {
 function toText(): string;
 
 // @public (undocumented)
-export interface TrashGItem {
-    // (undocumented)
-    cloud: CloudFileMeta | null;
-    // (undocumented)
-    conflictLive?: boolean;
-    // (undocumented)
-    deletedAt?: number;
-    // (undocumented)
-    encrypted?: boolean;
-    // (undocumented)
-    local: LocalSessionMeta | null;
-    // (undocumented)
-    name: string;
-}
-
-// @public (undocumented)
-export interface TrashTile {
-    // (undocumented)
-    cloud: CloudFileMeta | null;
-    // (undocumented)
-    deletedAt: number;
-    // (undocumented)
-    hasLocalThumb: boolean;
-    // (undocumented)
-    local: LocalSessionMeta | null;
-    // (undocumented)
-    name: string;
-    // (undocumented)
-    source: string;
-}
-
-// @public (undocumented)
-export function trashTileFor(item: TrashGItem): TrashTile;
-
-// @public (undocumented)
 export function uniqueBareName(stem: string, occupied: (fullName: string) => Promise<unknown>, naming?: NameBoundary): Promise<string>;
 
 // @public (undocumented)
@@ -3058,12 +3102,11 @@ export interface VerbStore {
             cloudRef: string | null;
         }): Promise<unknown>;
         emptyTrash(o: {
-            scope: "local" | "cloud" | "both";
-        }): Promise<{
-            failed?: {
-                where?: string;
-            }[];
-        }>;
+            scope: AsideScope;
+        }): Promise<AsideEmptyResult>;
+        emptyBackup(o: {
+            scope: AsideScope;
+        }): Promise<AsideEmptyResult>;
     };
 }
 

@@ -1,8 +1,9 @@
 // 图库文件管理动词（无 DOM）——WET 自 WeebPaint src/gallery/gallery.ts 的 intents 段（rename/move/copy/reupload/del/
-//   deleteImage/folderDelete/trashRestore/trashPurge/emptyTrash/encrypt/decrypt/unlock），2026-09-09 抽出成 headless 模块。
+//   deleteImage/folderDelete/asideRestore/asidePurge/emptyAside/encrypt/decrypt/unlock），2026-09-09 抽出成 headless 模块。
 // 红线兜底随行（提案 §5）：删=回收站且诚实读 DelResult；改名失败保输入循环重试、错误写进重弹的输入框标题；失败不报成功；
 //   移动只给「上级 + 可见子夹」绝不 poll 全树；复制加密源原样搬密文；清空回收站部分失败必说。屏幕层只负责调 + reload。
-import { hasLocalCopy, hasCloudCopy, hasUnpushed, type GItem, type TrashGItem } from "./model/gallery-view-model.ts";
+import { hasLocalCopy, hasCloudCopy, hasUnpushed, type GItem } from "./model/gallery-view-model.ts";
+import { ASIDE, type AsideItem, type AsideKind, type AsideScope, type AsideEmptyResult } from "./model/aside.ts";
 import { copyTargetName, type NameBoundary } from "./model/gallery-model.ts";
 import { pathFolder, pathBasename, pathJoin } from "./model/gallery-path.ts";
 import { naturalCompare } from "./model/natural-order.ts";
@@ -44,7 +45,8 @@ export interface VerbStore {
     deleteFolder(path: string): Promise<unknown>;
     restoreTrash(o: { trashKey: string | null; fromCloud: boolean; cloudRef: string | null; targetName: string; encrypted: boolean }): Promise<{ name?: string }>;
     purgeTrash(o: { trashKey: string | null; cloudRef: string | null }): Promise<unknown>;
-    emptyTrash(o: { scope: "local" | "cloud" | "both" }): Promise<{ failed?: { where?: string }[] }>;
+    emptyTrash(o: { scope: AsideScope }): Promise<AsideEmptyResult>;
+    emptyBackup(o: { scope: AsideScope }): Promise<AsideEmptyResult>;
   };
 }
 export interface VerbEncryption {
@@ -215,35 +217,40 @@ export function createGalleryVerbs(d: VerbDeps) {
     catch (e: unknown) { d.host.status(t("gal.st.folderDelFail", { e: errMsg(e) }), true); }
   }
 
-  async function trashRestore(item: TrashGItem): Promise<void> {
+  // ── 搁置区（回收站 / 备份箱，0.5.0）：恢复 / 彻底删只认 item 自带的两把钥匙（localKey / cloudRef），
+  //    store 的 restoreTrash / purgeTrash 两个分区都认；清空调哪个、说什么话走 ASIDE 表。 ──
+  async function asideRestore(item: AsideItem): Promise<void> {
     await d.host.busy(t("gal.busy.restore", { name: item.name }), async () => {
       try {
         const res = await d.store().files.restoreTrash({
-          trashKey: item.local ? item.local.trashKey! : null, fromCloud: !!item.cloud, cloudRef: item.cloud ? item.cloud.id! : null,
-          targetName: naming.full(item.name), encrypted: !!item.encrypted,
+          trashKey: item.localKey, fromCloud: !!item.cloudRef, cloudRef: item.cloudRef,
+          targetName: naming.full(item.name), encrypted: item.encrypted,
         });
         const rn = res.name ? naming.bare(res.name) : item.name;
         d.host.status(rn !== item.name ? t("gal.st.restoredRenamed", { name: rn, orig: item.name }) : t("gal.st.restored", { name: rn }));
       } catch (e: unknown) { d.host.status(t("gal.st.restoreFail", { e: errMsg(e) }), true); }
     });
   }
-  async function trashPurge(item: TrashGItem): Promise<void> {
+  async function asidePurge(item: AsideItem): Promise<void> {
     if (!(await d.host.confirm(t("gal.dlg.purgeTitle", { name: item.name }), t("gal.dlg.purgeMsg")))) return;
     await d.host.busy(t("gal.busy.purge", { name: item.name }), async () => {
-      try { await d.store().files.purgeTrash({ trashKey: item.local ? item.local.trashKey! : null, cloudRef: item.cloud ? item.cloud.id! : null }); d.host.status(t("gal.st.purged", { name: item.name })); }
+      try { await d.store().files.purgeTrash({ trashKey: item.localKey, cloudRef: item.cloudRef }); d.host.status(t("gal.st.purged", { name: item.name })); }
       catch (e: unknown) { d.host.status(t("gal.st.purgeFail", { e: errMsg(e) }), true); }
     });
   }
-  async function emptyTrash(scope: "local" | "cloud" | "both" = "both"): Promise<void> {
+  async function emptyAside(kind: AsideKind, scope: AsideScope = "both"): Promise<void> {
+    const spec = ASIDE[kind], tx = spec.text;
     const label = scope === "local" ? t("gal.scope.local") : scope === "cloud" ? t("gal.scope.cloud") : t("gal.scope.both");
-    if (scope === "cloud" && !cloudOn()) { d.host.status(t("gal.st.emptyTrashCloudNeedLogin"), true); return; }
-    if (!(await d.host.confirm(t("gal.dlg.emptyTrashTitle", { label }), t("gal.dlg.emptyTrashMsg", { label })))) return;
-    await d.host.busy(t("gal.busy.emptyTrash", { label }), async () => {
-      const res = await d.store().files.emptyTrash({ scope });
-      const cloudFails = (res.failed || []).filter((f) => f.where !== "local").length;
-      if (scope !== "local" && cloudFails) d.host.status(t("gal.st.emptyTrashCloudFail", { n: cloudFails }), true);
-      else if ((res.failed || []).length) d.host.status(t("gal.st.emptyTrashPartial"), true);
-      else d.host.status(t("gal.st.emptyTrashDone", { label }));
+    if (scope === "cloud" && !cloudOn()) { d.host.status(t(tx.emptyNeedLogin), true); return; }
+    if (!(await d.host.confirm(t(tx.emptyTitle, { label }), t(tx.emptyMsg, { label })))) return;
+    await d.host.busy(t(tx.emptyBusy, { label }), async () => {
+      try {
+        const res = await spec.empty(d.store().files, scope);
+        const cloudFails = (res.failed || []).filter((f) => f.where !== "local").length;
+        if (scope !== "local" && cloudFails) d.host.status(t(tx.emptyCloudFail, { n: cloudFails }), true);
+        else if ((res.failed || []).length) d.host.status(t(tx.emptyPartial), true);
+        else d.host.status(t(tx.emptyDone, { label }));
+      } catch (e: unknown) { d.host.status(`${t(tx.emptyPartial)}: ${errMsg(e)}`, true); }
     });
   }
 
@@ -297,6 +304,6 @@ export function createGalleryVerbs(d: VerbDeps) {
     return ok;
   }
 
-  return { rename, move, moveTargets, copy, push, unload, keepOffline, reupload, del, deleteImage, folderDelete, trashRestore, trashPurge, emptyTrash, encryptItem, decryptItem, unlock, whereLabel };
+  return { rename, move, moveTargets, copy, push, unload, keepOffline, reupload, del, deleteImage, folderDelete, asideRestore, asidePurge, emptyAside, encryptItem, decryptItem, unlock, whereLabel };
 }
 export type GalleryVerbs = ReturnType<typeof createGalleryVerbs>;

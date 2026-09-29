@@ -1,8 +1,9 @@
-// 图库数据面（WET 自 WeebPaint src/app-store.ts 的图库段，2026-09-09）：store.Item → GItem；当前夹订阅的路由 + 排序；回收站映射。
+// 图库数据面（WET 自 WeebPaint src/app-store.ts 的图库段，2026-09-09）：store.Item → GItem；当前夹订阅的路由 + 排序；搁置区（回收站 / 备份箱）映射。
 // 库唯一列举面 = store.files.watchFolder（订阅当前夹）；⛔ 永不 list 全库（WeebPaint 2026-07-12 删 listGallery 的判决）。
 // 扩展名知识来自 policy（默认 = cloud-image-model 的 WeebPaint 白名单）；裸名↔全名边界来自 policy.naming（默认恒等）。
 import { isCached, type Item, type TrashItem, type WatchFolderErrorPhase } from "@internal/store";
-import type { GItem, TrashGItem } from "./model/gallery-view-model.ts";
+import type { GItem } from "./model/gallery-view-model.ts";
+import { ASIDE, asideItemFrom, sortAside, type AsideItem, type AsideKind } from "./model/aside.ts";
 import type { NameBoundary } from "./model/gallery-model.ts";
 import { isDocPath, isImagePath } from "./model/cloud-image-model.ts";
 import { naturalCompare } from "./model/natural-order.ts";
@@ -16,6 +17,7 @@ export interface DataFaceStore {
   files: {
     watchFolder(folder: string, cb: (snap: { path: string; items: Item[]; folders: string[]; complete: boolean }) => void, opts?: { onError?: (err: unknown, phase: WatchFolderErrorPhase) => void }): () => void;
     listTrash(): Promise<TrashItem[]>;
+    listBackup(): Promise<TrashItem[]>;
   };
   file(name: string, opts: { isZip: false; mode: "existing" }): { open(): Promise<Blob | null> };
 }
@@ -63,15 +65,10 @@ export function createGalleryDataFace(deps: { store: () => DataFaceStore | null;
       return requireStore().files.watchFolder(folder, (snap) => cb({ path: snap.path, images: toImageItems(snap.items), folderNames: folderNamesOf(folder, snap.folders) }));
     },
     openCloudImage: (path: string): Promise<Blob | null> => requireStore().file(path, { isZip: false, mode: "existing" }).open(),
-    /** 回收站：store 两端聚合的 TrashItem[] → TrashGItem（只元数据，无 blob）。 */
-    listTrash: async (): Promise<TrashGItem[]> => (await requireStore().files.listTrash()).map((it) => ({
-      name: naming.bare(it.name),
-      deletedAt: 0,
-      encrypted: it.encrypted,
-      conflictLive: it.conflictLive,
-      local: it.localKey ? { name: naming.bare(it.name), trashKey: it.localKey, encrypted: it.encrypted } : null,
-      cloud: it.cloudRef ? { path: it.name, id: it.cloudRef } : null,
-    })),
+    /** 搁置区（0.5.0；回收站 / 备份箱同一个面）：store 两端聚合的 TrashItem[] → AsideItem（只元数据，无 blob），新的在前。
+     *  读哪个列表由 ASIDE 表定；列表只来自 store，宿主没有注入口。 */
+    listAside: async (kind: AsideKind): Promise<AsideItem[]> =>
+      sortAside((await ASIDE[kind].list(requireStore().files)).map((it) => asideItemFrom(kind, it, naming.bare)), naturalCompare),
   };
 }
 export type GalleryDataFace = ReturnType<typeof createGalleryDataFace>;

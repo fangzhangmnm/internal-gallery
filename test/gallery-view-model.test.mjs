@@ -1,6 +1,6 @@
 // Gallery 展示派生测试（UI 深化 candidate 1 · gallery）。
 import { describe, it, eq, assert } from "./runner.mjs";
-import { tileFor, breadcrumb, trashTileFor, humanSize } from "../src/core/model/gallery-view-model.ts";
+import { tileFor, breadcrumb, asideTileFor, humanSize } from "../src/core/model/gallery-view-model.ts";
 import { naturalCompare } from "../src/core/model/natural-order.ts";
 
 describe("gallery-view-model · tileFor = store 9 态直映（0.4.0：不再派生 local/cloud/dirty 布尔）", () => {
@@ -48,11 +48,16 @@ describe("gallery-view-model · breadcrumb", () => {
   });
 });
 
-describe("gallery-view-model · trashTileFor", () => {
-  it("来源标签", () => {
-    eq(trashTileFor({ name: "a", local: {}, cloud: {} }).source, "Local+cloud");
-    eq(trashTileFor({ name: "a", local: {}, cloud: null }).source, "Local");
-    eq(trashTileFor({ name: "a", local: null, cloud: {} }).source, "Cloud");
+describe("gallery-view-model · asideTileFor（回收站 / 备份箱同一个 tile 形状）", () => {
+  const row = (side, extra = {}) => ({ kind: "trash", key: "k", name: "a", at: 0, side, localKey: null, cloudRef: null, encrypted: false, conflictLive: false, ...extra });
+  it("来源标签按 side", () => {
+    eq(asideTileFor(row("both")).source, "Local+cloud");
+    eq(asideTileFor(row("local")).source, "Local");
+    eq(asideTileFor(row("cloud")).source, "Cloud");
+  });
+  it("离线删被撤销（conflictLive）→ 来源标签说「云端仍在」；key / 时间原样带出", () => {
+    const tile = asideTileFor(row("local", { conflictLive: true, key: "trash|x|", at: 123 }));
+    eq(tile.source, "Local (still in cloud)"); eq(tile.key, "trash|x|"); eq(tile.at, 123);
   });
   // （旧 mergeTrash 锚已随函数被 store 库收编 → 真测试在 test/trash-merge.test.ts）
 });
