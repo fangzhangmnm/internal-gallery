@@ -330,7 +330,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const folderTiles = computed(() => data.folderNames.map((fn) => ({ name: fn, path: pathJoin(folder.value, fn) })));
       const fileTiles = computed(() => data.files.map((it) => { const tile = tileFor(it, { signedIn: d.host.signedIn(), activeName: d.host.activeName(), encrypted: !!encByName[it.name] }); if (naming.display) tile.displayName = naming.display(tile.displayName); return { item: it, t: tile, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.name) }; }));
       // 搁置区卡片：取不取缩略图、时间后面跟哪个词，按 item 自带的 kind 查 ASIDE 表
-      const asideTiles = computed(() => aside.value.map((it) => ({ item: it, t: asideTileFor(it), fetch: ASIDE[it.kind].thumb === "by-name", atWord: t(ASIDE[it.kind].text.at), ov: ovHtml(it.name) })));
+      const asideTiles = computed(() => aside.value.map((it) => ({ item: it, t: asideTileFor(it), display: naming.display ? naming.display(it.name) : it.name, fetch: ASIDE[it.kind].thumb === "by-name", atWord: t(ASIDE[it.kind].text.at), ov: ovHtml(it.name) })));
       const imageTiles = computed(() => data.images.map((im) => ({ raw: im, path: im.path, name: im.name, size: im.size || 0, time: im.lastModified || 0, token: imageThumbToken(im) })));
       const otherTiles = computed(() => data.others.map((o) => ({ path: o.path, name: o.name, size: o.size || 0, time: o.lastModified || 0 })));
       const crumbs = computed(() => breadcrumb(folder.value));
@@ -527,10 +527,10 @@ const GALLERY_TEMPLATE = `
 
         <template v-if="view!=='files' && !loading">
           <div v-for="row in asideTiles" :key="row.t.key" class="gallery-tile aside" :class="'aside-' + row.item.kind">
-            <ThumbCell :fetchable="row.fetch" :is-cloud="row.fetch && row.item.side==='cloud'" thumb-token="0" :fallback="row.t.name.slice(0,1) || '?'" :fallback-html="phHtml(row.t.name)" :alt="row.t.name" />
+            <ThumbCell :fetchable="row.fetch" :is-cloud="row.fetch && row.item.side==='cloud'" thumb-token="0" :fallback="row.display.slice(0,1) || '?'" :fallback-html="phHtml(row.t.name)" :alt="row.t.name" />
             <span v-if="row.ov" class="gallery-tile-overlay" v-html="row.ov"></span>
             <div class="gallery-tile-name-row">
-              <div class="gallery-tile-name" :title="row.t.name">{{ row.t.name }}</div>
+              <div class="gallery-tile-name" :title="row.t.name">{{ row.display }}</div>
               <div class="gallery-tile-meta" :title="fullTime(row.t.at)">{{ row.t.source }} · {{ humanTime(row.t.at) }} {{ row.atWord }}</div>
             </div>
             <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu('A:'+row.t.key)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
