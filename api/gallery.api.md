@@ -2418,8 +2418,8 @@ export interface GalleryScreenDeps {
             size?: number;
             cls?: string;
         }) => string;
-        tilePlaceholderHtml?: (name: string) => string | undefined;
-        tileOverlayHtml?: (name: string) => string | undefined;
+        tilePlaceholderHtml?: (name: string, info?: TileInfo) => string | undefined;
+        tileOverlayHtml?: (name: string, info?: TileInfo) => string | undefined;
     };
     // (undocumented)
     vue: VueRuntime;
@@ -2936,6 +2936,22 @@ export function tileFor(item: GItem, opts: {
 }): GalleryTile;
 
 // @public
+export interface TileInfo {
+    aside?: AsideKind;
+    // (undocumented)
+    identifier: string;
+    kind: string | null;
+    // (undocumented)
+    lastModified?: number;
+    // (undocumented)
+    size?: number;
+    // (undocumented)
+    stem: string;
+    // (undocumented)
+    syncState?: SyncState;
+}
+
+// @public
 function toText(): string;
 
 // @public (undocumented)
@@ -3088,7 +3104,7 @@ export interface VerbStore {
     identifiers: Identifiers;
 }
 
-// @public
+// @public (undocumented)
 export interface VueRuntime {
     // (undocumented)
     computed: <T>(fn: () => T) => {

@@ -2,6 +2,7 @@
 // 变化只在接缝（提案 §3「塑」）：Vue 从 deps.vue 注入；session.* 十处 → DocHost；文件动词 → core/verbs；数据 → core/data-face；
 //   缩略图 / 加密 / 图标 / 文案 / 诊断 全走注入；宿主布局知识（当前夹记忆、图库模式判定）走 deps。模板与 class 名逐字保留。
 import { toggleAdoptedPopup, type PopupMenuHandle } from "@internal/workbench-elements";
+import type { SyncState } from "@internal/store";
 import type { GItem } from "../core/model/gallery-view-model.ts";
 import { tileFor, breadcrumb, asideTileFor, humanTime, humanSize, fullTime, hasLocalCopy } from "../core/model/gallery-view-model.ts";
 import { ASIDE, type AsideItem, type AsideKind, type AsideScope } from "../core/model/aside.ts";
@@ -17,6 +18,19 @@ import { t } from "../core/text.ts";
 import { isPng, readPngText, PNG_BLURB_KEYWORD } from "../core/thumbs/png-text.ts";
 
 /** 宿主 vendored 的 Vue prod ESM（提案 §7.1 决定 (a)）。 */
+/** 0.6.4：宿主画封面 / 占位时拿到的卡片信息（tileOverlayHtml / tilePlaceholderHtml 的第二参）。
+ *  文件卡 = GItem 的字段；搁置区（回收站 / 备份箱）卡 = 从 AsideItem 映射：at → lastModified、box → aside；没有 size、没有 syncState。 */
+export interface TileInfo {
+  identifier: string;
+  stem: string;
+  /** 文档种类（store docKinds 表的 kind）；搁置区里不是文档的条目 → null。 */
+  kind: string | null;
+  syncState?: SyncState;
+  size?: number;
+  lastModified?: number;
+  /** 在回收站 / 备份箱里的卡片才有。 */
+  aside?: AsideKind;
+}
 export interface VueRuntime {
   createApp: (root: unknown) => { mount(el: HTMLElement): unknown; unmount(): void };
   /** Vue 的 Teleport 组件（0.6.2：卡片 ⋯ 菜单传送出卡片，进宿主的菜单 band；宿主把 vue 模块里的 Teleport 原样递进来）。 */
@@ -53,13 +67,15 @@ export interface GalleryScreenDeps {
   host: VerbHost;
   ui: {
     iconHtml: (name: string, opts?: { size?: number; cls?: string }) => string;
-    /** 0.1.2：无缩略图时卡片占位内容（HTML，通常是一枚图标）。不给 → 退回名字首字（WeebPaint 默认；WXHW 2026-09-10 user「所有的预览图都是 2……不要从名字生成」→ 宿主给 book/file 图标）。 */
-    tilePlaceholderHtml?: (name: string) => string | undefined;
+    /** 0.1.2：无缩略图时卡片占位内容（HTML，通常是一枚图标）。不给 → 退回名字首字（WeebPaint 默认；WXHW 2026-09-10 user「所有的预览图都是 2……不要从名字生成」→ 宿主给 book/file 图标）。
+     *  0.6.4：第二参 = 卡片信息（大小 / 修改时间 / 种类 / 在哪个箱子），可选、向后兼容。 */
+    tilePlaceholderHtml?: (name: string, info?: TileInfo) => string | undefined;
     /** 0.5.0：盖在文档卡片封面上的一层宿主内容（HTML）。**有没有缩略图都画**——缩略图只是背景
      *  （WXHW 2026-09-29 user「字的逻辑一样，无视是否有图，图只是背景」）。文件 / 回收站 / 备份箱的卡片都走它；文件夹、图片、杂物卡片不走。
      *  包只给一个铺满封面、不吃指针事件的槽（`.gallery-tile-overlay`，紧跟在缩略图元素后面，宿主 CSS 可以用相邻选择器区分底下是图还是占位），
-     *  里面画什么、怎么排版全归宿主；包不因为有没有这一层改变任何别的行为。列表布局不画。不给 / 返回空 = 不画。 */
-    tileOverlayHtml?: (name: string) => string | undefined;
+     *  里面画什么、怎么排版全归宿主；包不因为有没有这一层改变任何别的行为。列表布局不画。不给 / 返回空 = 不画。
+     *  0.6.4：第二参 = 卡片信息（WXHW 2026-09-30 user「左边是 yyyymmdd，右边是 size」要在封面上印大小），可选、向后兼容。 */
+    tileOverlayHtml?: (name: string, info?: TileInfo) => string | undefined;
   };
   /** 0.2.0：卡片比例。"1/1" 方图（WeebPaint 默认）；"2/3" 竖版书封（WXHW 书库；窄屏一排三本）。
    *  0.3.0（JRB 第三消费者，提案 ai-docs/20260919-proposal-list-view.md）：layout "list" = 一行一件、名字整行（最多折两行不截断）、副标题一行、右侧 ⋯；
@@ -119,8 +135,11 @@ function thumbLoadPixelated(e: Event): boolean {
 export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): GalleryHandle {
   const { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick } = d.vue;
   const icon = d.ui.iconHtml;
-  const phHtml = (name: string): string => d.ui.tilePlaceholderHtml?.(name) ?? "";   // 0.1.2：宿主给的占位图标；空 = 退回名字首字
-  const ovHtml = (name: string): string => { try { return d.ui.tileOverlayHtml?.(name) ?? ""; } catch { return ""; } };   // 0.5.0：宿主盖在封面上的一层
+  const phHtml = (name: string, info?: TileInfo): string => d.ui.tilePlaceholderHtml?.(name, info) ?? "";   // 0.1.2：宿主给的占位图标；空 = 退回名字首字
+  const ovHtml = (name: string, info?: TileInfo): string => { try { return d.ui.tileOverlayHtml?.(name, info) ?? ""; } catch { return ""; } };   // 0.5.0：宿主盖在封面上的一层
+  // 0.6.4：宿主画封面 / 占位时拿到的卡片信息。文件卡 = GItem 本尊的字段；搁置区卡从 AsideItem 映射（at → lastModified；没有 size）。
+  const fileInfo = (it: GItem): TileInfo => ({ identifier: it.identifier, stem: it.stem, kind: it.kind, syncState: it.syncState, size: it.size, lastModified: it.lastModified });
+  const asideInfo = (it: AsideItem): TileInfo => ({ identifier: it.identifier, stem: it.stem, kind: it.kind, lastModified: it.at || undefined, aside: it.box });
   const thumbKinds = new Set(d.thumbKinds ?? []);
   const hasThumb = (kind: string | null): boolean => kind != null && thumbKinds.has(kind);
   const ICON = {
@@ -327,9 +346,9 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       });
 
       const folderTiles = computed(() => data.folderNames.map((fn) => ({ name: fn, path: pathJoin(folder.value, fn) })));
-      const fileTiles = computed(() => data.files.map((it) => { const tile = tileFor(it, { signedIn: d.host.signedIn(), activeIdentifier: d.host.activeIdentifier(), encrypted: !!encByName[it.identifier] }); return { item: it, t: tile, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.identifier), thumb: hasThumb(it.kind) }; }));
+      const fileTiles = computed(() => data.files.map((it) => { const tile = tileFor(it, { signedIn: d.host.signedIn(), activeIdentifier: d.host.activeIdentifier(), encrypted: !!encByName[it.identifier] }); return { item: it, t: tile, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.identifier, fileInfo(it)), thumb: hasThumb(it.kind), info: fileInfo(it) }; }));
       // 搁置区卡片：取不取缩略图、时间后面跟哪个词，按 item 自带的 kind 查 ASIDE 表
-      const asideTiles = computed(() => aside.value.map((it) => ({ item: it, t: asideTileFor(it), fetch: ASIDE[it.box].thumb === "by-name" && hasThumb(it.kind), atWord: t(ASIDE[it.box].text.at), ov: it.kind != null ? ovHtml(it.identifier) : "" })));
+      const asideTiles = computed(() => aside.value.map((it) => ({ item: it, t: asideTileFor(it), fetch: ASIDE[it.box].thumb === "by-name" && hasThumb(it.kind), atWord: t(ASIDE[it.box].text.at), ov: it.kind != null ? ovHtml(it.identifier, asideInfo(it)) : "", info: asideInfo(it) })));
       const imageTiles = computed(() => data.images.map((im) => ({ raw: im, identifier: im.identifier, label: im.label, size: im.size || 0, time: im.lastModified || 0, token: imageThumbToken(im) })));
       const otherTiles = computed(() => data.others.map((o) => ({ identifier: o.identifier, label: o.label, size: o.size || 0, time: o.lastModified || 0 })));
       const crumbs = computed(() => breadcrumb(folder.value));
@@ -470,7 +489,7 @@ const GALLERY_TEMPLATE = `
           </div>
 
           <div v-for="row in fileTiles" :key="row.t.identifier" class="gallery-tile" :class="{ active: row.t.isActive, encrypted: row.t.encrypted }" @click="openTile(row.item)">
-            <ThumbCell :enc-name="row.t.encrypted && row.thumb ? row.t.identifier : null" :fetchable="!row.t.encrypted && (row.t.hasCloud || row.t.hasLocal) && row.thumb" :is-cloud="!row.t.hasLocal && row.t.hasCloud" :cloud-newer="row.t.cloudNewer" :thumb-token="String(row.t.time || row.t.size || 0)" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="phHtml(row.t.identifier)" :alt="row.t.identifier" @unlock="onUnlock" />
+            <ThumbCell :enc-name="row.t.encrypted && row.thumb ? row.t.identifier : null" :fetchable="!row.t.encrypted && (row.t.hasCloud || row.t.hasLocal) && row.thumb" :is-cloud="!row.t.hasLocal && row.t.hasCloud" :cloud-newer="row.t.cloudNewer" :thumb-token="String(row.t.time || row.t.size || 0)" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="phHtml(row.t.identifier, row.info)" :alt="row.t.identifier" @unlock="onUnlock" />
             <span v-if="row.ov" class="gallery-tile-overlay" v-html="row.ov"></span>
             <span v-if="row.t.encrypted" class="gallery-tile-lockmark" :title="L.encrypted" v-html="ICON.lock"></span>
             <div class="gallery-tile-name-row">
@@ -538,7 +557,7 @@ const GALLERY_TEMPLATE = `
 
         <template v-if="view!=='files' && !loading">
           <div v-for="row in asideTiles" :key="row.t.key" class="gallery-tile aside" :class="['aside-' + row.item.box, { encrypted: row.item.encrypted }]">
-            <ThumbCell :fetchable="row.fetch" :is-cloud="row.fetch && row.item.side==='cloud'" thumb-token="0" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="row.item.kind != null ? phHtml(row.t.identifier) : ''" :alt="row.t.identifier" />
+            <ThumbCell :fetchable="row.fetch" :is-cloud="row.fetch && row.item.side==='cloud'" thumb-token="0" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="row.item.kind != null ? phHtml(row.t.identifier, row.info) : ''" :alt="row.t.identifier" />
             <span v-if="row.ov" class="gallery-tile-overlay" v-html="row.ov"></span>
             <span v-if="row.item.encrypted" class="gallery-tile-lockmark" :title="L.encrypted" v-html="ICON.lock"></span>
             <div class="gallery-tile-name-row">

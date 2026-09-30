@@ -2184,13 +2184,15 @@ export declare interface GalleryScreenDeps {
             size?: number;
             cls?: string;
         }) => string;
-        /** 0.1.2：无缩略图时卡片占位内容（HTML，通常是一枚图标）。不给 → 退回名字首字（WeebPaint 默认；WXHW 2026-09-10 user「所有的预览图都是 2……不要从名字生成」→ 宿主给 book/file 图标）。 */
-        tilePlaceholderHtml?: (name: string) => string | undefined;
+        /** 0.1.2：无缩略图时卡片占位内容（HTML，通常是一枚图标）。不给 → 退回名字首字（WeebPaint 默认；WXHW 2026-09-10 user「所有的预览图都是 2……不要从名字生成」→ 宿主给 book/file 图标）。
+         *  0.6.4：第二参 = 卡片信息（大小 / 修改时间 / 种类 / 在哪个箱子），可选、向后兼容。 */
+        tilePlaceholderHtml?: (name: string, info?: TileInfo) => string | undefined;
         /** 0.5.0：盖在文档卡片封面上的一层宿主内容（HTML）。**有没有缩略图都画**——缩略图只是背景
          *  （WXHW 2026-09-29 user「字的逻辑一样，无视是否有图，图只是背景」）。文件 / 回收站 / 备份箱的卡片都走它；文件夹、图片、杂物卡片不走。
          *  包只给一个铺满封面、不吃指针事件的槽（`.gallery-tile-overlay`，紧跟在缩略图元素后面，宿主 CSS 可以用相邻选择器区分底下是图还是占位），
-         *  里面画什么、怎么排版全归宿主；包不因为有没有这一层改变任何别的行为。列表布局不画。不给 / 返回空 = 不画。 */
-        tileOverlayHtml?: (name: string) => string | undefined;
+         *  里面画什么、怎么排版全归宿主；包不因为有没有这一层改变任何别的行为。列表布局不画。不给 / 返回空 = 不画。
+         *  0.6.4：第二参 = 卡片信息（WXHW 2026-09-30 user「左边是 yyyymmdd，右边是 size」要在封面上印大小），可选、向后兼容。 */
+        tileOverlayHtml?: (name: string, info?: TileInfo) => string | undefined;
     };
     /** 0.2.0：卡片比例。"1/1" 方图（WeebPaint 默认）；"2/3" 竖版书封（WXHW 书库；窄屏一排三本）。
      *  0.3.0（JRB 第三消费者，提案 ai-docs/20260919-proposal-list-view.md）：layout "list" = 一行一件、名字整行（最多折两行不截断）、副标题一行、右侧 ⋯；
@@ -2637,6 +2639,21 @@ export declare function tileFor(item: GItem, opts: {
     encrypted?: boolean;
 }): GalleryTile;
 
+/** 宿主 vendored 的 Vue prod ESM（提案 §7.1 决定 (a)）。 */
+/** 0.6.4：宿主画封面 / 占位时拿到的卡片信息（tileOverlayHtml / tilePlaceholderHtml 的第二参）。
+ *  文件卡 = GItem 的字段；搁置区（回收站 / 备份箱）卡 = 从 AsideItem 映射：at → lastModified、box → aside；没有 size、没有 syncState。 */
+export declare interface TileInfo {
+    identifier: string;
+    stem: string;
+    /** 文档种类（store docKinds 表的 kind）；搁置区里不是文档的条目 → null。 */
+    kind: string | null;
+    syncState?: SyncState;
+    size?: number;
+    lastModified?: number;
+    /** 在回收站 / 备份箱里的卡片才有。 */
+    aside?: AsideKind;
+}
+
 /** 复制/展示用的整段文本：环境头 + 每条一行「MM-DD HH:MM:SS.mmm L msg」（旧在上、新在下）。 */
 declare function toText(): string;
 
@@ -2755,7 +2772,6 @@ export declare interface VerbStore {
     };
 }
 
-/** 宿主 vendored 的 Vue prod ESM（提案 §7.1 决定 (a)）。 */
 export declare interface VueRuntime {
     createApp: (root: unknown) => {
         mount(el: HTMLElement): unknown;
