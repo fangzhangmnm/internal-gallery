@@ -1,6 +1,7 @@
 // 图库屏幕（Vue 深模块）——WET 自 WeebPaint src/gallery/gallery.ts v0.14.9（C 骑士轮「UI 深化 candidate 1」），2026-09-09 包化。
 // 变化只在接缝（提案 §3「塑」）：Vue 从 deps.vue 注入；session.* 十处 → DocHost；文件动词 → core/verbs；数据 → core/data-face；
 //   缩略图 / 加密 / 图标 / 文案 / 诊断 全走注入；宿主布局知识（当前夹记忆、图库模式判定）走 deps。模板与 class 名逐字保留。
+import { toggleAdoptedPopup, type PopupMenuHandle } from "@internal/workbench-elements";
 import type { GItem } from "../core/model/gallery-view-model.ts";
 import { tileFor, breadcrumb, asideTileFor, humanTime, humanSize, fullTime, hasLocalCopy } from "../core/model/gallery-view-model.ts";
 import { ASIDE, type AsideItem, type AsideKind, type AsideScope } from "../core/model/aside.ts";
@@ -18,6 +19,8 @@ import { isPng, readPngText, PNG_BLURB_KEYWORD } from "../core/thumbs/png-text.t
 /** 宿主 vendored 的 Vue prod ESM（提案 §7.1 决定 (a)）。 */
 export interface VueRuntime {
   createApp: (root: unknown) => { mount(el: HTMLElement): unknown; unmount(): void };
+  /** Vue 的 Teleport 组件（0.6.2：卡片 ⋯ 菜单传送出卡片，进宿主的菜单 band；宿主把 vue 模块里的 Teleport 原样递进来）。 */
+  Teleport: unknown;
   defineComponent: (o: unknown) => unknown;
   reactive: <T extends object>(o: T) => T;
   ref: <T>(v: T) => { value: T };
@@ -223,7 +226,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
 
   const Gallery = defineComponent({
     name: "Gallery",
-    components: { ThumbCell, ImageThumbCell },
+    components: { ThumbCell, ImageThumbCell, Teleport: d.vue.Teleport },
     setup() {
       const view = ref<GalleryView>("files");
       const layout = ref<"cards" | "list">(d.tile?.layout ?? "cards");
@@ -312,9 +315,9 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
           stalled.value = t("gal.firstFrameFailed");
         }
       }
-      async function reload() { openMenu.value = null; const v = view.value; if (v === "files") { _asideSeq++; subscribe(); } else { _unsub?.(); _unsub = null; await loadAside(v); } }
-      function setFolder(p: string) { folder.value = p || ""; try { d.folderMemory?.set(folder.value); } catch { /* noop */ } openMenu.value = null; subscribe(); }
-      function hydrateFolder(p: string) { if ((p || "") === folder.value) return; folder.value = p || ""; openMenu.value = null; subscribe(); }
+      async function reload() { closeMenu(); const v = view.value; if (v === "files") { _asideSeq++; subscribe(); } else { _unsub?.(); _unsub = null; await loadAside(v); } }
+      function setFolder(p: string) { folder.value = p || ""; try { d.folderMemory?.set(folder.value); } catch { /* noop */ } closeMenu(); subscribe(); }
+      function hydrateFolder(p: string) { if ((p || "") === folder.value) return; folder.value = p || ""; closeMenu(); subscribe(); }
       subscribe();
       onUnmounted(() => {
         _unsub?.(); _unsub = null; wd.cancel(); gate.reset();
@@ -335,16 +338,25 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const badgeIcon = (k: string) => (ICON as Record<string, string>)[k] || "";
       const fmtMeta = (x: { time: number; size: number }) => `${humanTime(x.time)} · ${humanSize(x.size)}`;
 
-      const menuUp = ref(false);
-      const toggleMenu = (key: string) => {
-        const opening = openMenu.value !== key; openMenu.value = opening ? key : null;
-        if (!opening) return; menuUp.value = false;
-        void nextTick(() => { const el = document.querySelector<HTMLElement>(".gallery-tile-menu-popup:not(.hidden)"); if (el && el.getBoundingClientRect().bottom > window.innerHeight - 8) menuUp.value = true; });
+      // ── 卡片 ⋯ 菜单（0.6.2）：以前是卡片里的 absolute + z-index 5。卡片 :hover 带 transform，iOS 上点一下 hover 会粘住 → 卡片自成层叠上下文 →
+      //   菜单的 z 只在卡片里算，后面的卡片按 DOM 顺序盖上来（WXHW 真机 2026-09-30）。任何 transform / filter / opacity / contain 出现在卡片或其祖先上都会再犯。
+      //   根治 = 菜单不住卡片里：节点由 Vue <Teleport> 搬到图库挂载点（Vue 自己的 DOM 归 Vue 管，别让别人 appendChild），
+      //   生命周期 / 定位 / 外点关 / Escape / 栈 / 滚动收 全交给 @internal/workbench-elements 的 popup-menu 深模块（收养 adapter：
+      //   它的头注释点名「图库三 popup」就该这么走）；z 走 gallery.css 的 var(--z-menu)（band 表归宿主 :root）。
+      let menuHandle: PopupMenuHandle | null = null;
+      const closeMenu = () => { menuHandle?.close(); };
+      const toggleMenu = (key: string, ev: Event) => {
+        const btn = ev.currentTarget as HTMLElement;
+        const popup = [...el.querySelectorAll<HTMLElement>(".gallery-tile-menu-popup")].find((x) => x.dataset.menu === key);
+        if (!popup) return;
+        const h = toggleAdoptedPopup(popup, { anchor: btn, align: "right", band: "css", position: "anchor", onClose: () => { if (menuHandle?.el === popup) { menuHandle = null; openMenu.value = null; } } });
+        menuHandle = h; openMenu.value = h ? key : null;
       };
+      onUnmounted(closeMenu);
 
       // ── 动词：core/verbs（红线兜底在那边）；这里只包 openMenu 收起 + reload ──
       const verbs = createGalleryVerbs({ store: () => { const s = d.store(); if (!s) throw new Error("gallery: no library attached"); return s; }, host: d.host, doc: d.doc, thumbs: d.thumbs, onEncryptionChanged: invalidateEncrypted, encryption: enc });
-      const wrap = <A extends unknown[]>(fn: (...a: A) => Promise<void>) => async (...a: A) => { openMenu.value = null; await fn(...a); await reload(); };
+      const wrap = <A extends unknown[]>(fn: (...a: A) => Promise<void>) => async (...a: A) => { closeMenu(); await fn(...a); await reload(); };
       const rename = wrap((item: GItem) => verbs.rename(item));
       const move = wrap((item: GItem) => verbs.move(item, { folder: folder.value, folderNames: data.folderNames }));
       const copy = wrap((item: GItem) => verbs.copy(item, data.files.map((it) => it.identifier)));
@@ -363,13 +375,13 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       async function onUnlock(name: string) { if (await verbs.unlock(name)) await reload(); }
 
       async function openTile(item: GItem) {
-        openMenu.value = null;
+        closeMenu();
         if (item.identifier === d.host.activeIdentifier()) { await d.doc.open(item); return; }
         await d.doc.open(item); await reload();
       }
       function enterFolder(path: string) { setFolder(path); }
       async function openImageTile(img: CloudImageItem) {
-        openMenu.value = null;
+        closeMenu();
         if (!d.doc.importImageAsDoc) return;   // 宿主不支持图片转生 → 图片 tile 只显示
         const st = d.store();
         const firstKind = st?.identifiers.kinds[0];
@@ -402,7 +414,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         tileTall, layout, setLayout: (l: "cards" | "list") => { layout.value = l; },
         view, folder, loading, stalled, retry, openDiag, reloadApp, openMenu, isEmpty, emptyText, L, phHtml,
         folderTiles, fileTiles, imageTiles, otherTiles, asideTiles, crumbs,
-        badgeIcon, fmtMeta, humanTime, fullTime, ICON, toggleMenu, menuUp, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
+        badgeIcon, fmtMeta, humanTime, fullTime, ICON, toggleMenu, menuMount: el, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
         openTile, openImageTile, deleteImage, rename, move, copy, push, reupload, unload, keepOffline, del, folderDelete, asideRestore, asidePurge, emptyAside,
         encryptItem, decryptItem, onUnlock, requestUnlock, hasEncryption: !!enc,
         reload, setView: (v: GalleryView) => { view.value = v; void reload(); },
@@ -451,10 +463,10 @@ const GALLERY_TEMPLATE = `
               <div class="gallery-tile-name" :title="ft.path">{{ ft.name }}</div>
               <div class="gallery-tile-meta">{{ L.folder }}</div>
             </div>
-            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu('F:'+ft.path)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
-            <div class="gallery-tile-menu-popup" :class="{ hidden: openMenu!=='F:'+ft.path, up: menuUp }" @click.stop>
+            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu('F:'+ft.path, $event)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
+            <Teleport :to="menuMount"><div class="gallery-tile-menu-popup hidden" :data-menu="'F:'+ft.path" @click.stop>
               <button type="button" class="danger" @click="folderDelete(ft)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.delEmptyFolder }}</span></button>
-            </div>
+            </div></Teleport>
           </div>
 
           <div v-for="row in fileTiles" :key="row.t.identifier" class="gallery-tile" :class="{ active: row.t.isActive, encrypted: row.t.encrypted }" @click="openTile(row.item)">
@@ -471,8 +483,8 @@ const GALLERY_TEMPLATE = `
                 <span>{{ fmtMeta(row.t) }}</span>
               </div>
             </div>
-            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu(row.t.identifier)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
-            <div class="gallery-tile-menu-popup" :class="{ hidden: openMenu!==row.t.identifier, up: menuUp }" @click.stop>
+            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu(row.t.identifier, $event)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
+            <Teleport :to="menuMount"><div class="gallery-tile-menu-popup hidden" :data-menu="row.t.identifier" @click.stop>
               <template v-if="row.t.ghost">
                 <div class="gallery-menu-note">{{ L.divergedNote }}</div>
                 <button type="button" @click="rename(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#rename"/></svg><span>{{ L.renameKeep }}</span></button>
@@ -495,7 +507,7 @@ const GALLERY_TEMPLATE = `
                 <button v-if="hasEncryption && row.t.hasLocal && row.t.encrypted" type="button" @click="decryptItem(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#unlock"/></svg><span>{{ L.decrypt }}</span></button>
                 <button type="button" class="danger" @click="del(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.toTrash }}</span></button>
               </template>
-            </div>
+            </div></Teleport>
           </div>
 
           <div v-for="im in imageTiles" :key="'I:'+im.identifier" class="gallery-tile image-file" @click="openImageTile(im.raw)">
@@ -507,10 +519,10 @@ const GALLERY_TEMPLATE = `
                 <span>{{ fmtMeta({ time: im.time, size: im.size }) }}</span>
               </div>
             </div>
-            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu('I:'+im.identifier)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
-            <div class="gallery-tile-menu-popup" :class="{ hidden: openMenu!=='I:'+im.identifier, up: menuUp }" @click.stop>
+            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu('I:'+im.identifier, $event)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
+            <Teleport :to="menuMount"><div class="gallery-tile-menu-popup hidden" :data-menu="'I:'+im.identifier" @click.stop>
               <button type="button" class="danger" @click="deleteImage(im.raw)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.toTrash }}</span></button>
-            </div>
+            </div></Teleport>
           </div>
           <div v-for="ot in otherTiles" :key="'O:'+ot.identifier" class="gallery-tile other-file">
             <div class="gallery-tile-thumb" v-html="ICON.file"></div>
@@ -533,11 +545,11 @@ const GALLERY_TEMPLATE = `
               <div class="gallery-tile-name" :title="row.t.identifier">{{ row.t.stem }}</div>
               <div class="gallery-tile-meta" :title="fullTime(row.t.at)">{{ row.t.source }} · {{ humanTime(row.t.at) }} {{ row.atWord }}</div>
             </div>
-            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu('A:'+row.t.key)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
-            <div class="gallery-tile-menu-popup" :class="{ hidden: openMenu!=='A:'+row.t.key, up: menuUp }" @click.stop>
+            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu('A:'+row.t.key, $event)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
+            <Teleport :to="menuMount"><div class="gallery-tile-menu-popup hidden" :data-menu="'A:'+row.t.key" @click.stop>
               <button type="button" @click="asideRestore(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#restore-trash"/></svg><span>{{ L.restore }}</span></button>
               <button type="button" class="danger" @click="asidePurge(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.purge }}</span></button>
-            </div>
+            </div></Teleport>
           </div>
         </template>
       </div>

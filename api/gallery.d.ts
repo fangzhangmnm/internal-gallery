@@ -2761,6 +2761,8 @@ export declare interface VueRuntime {
         mount(el: HTMLElement): unknown;
         unmount(): void;
     };
+    /** Vue 的 Teleport 组件（0.6.2：卡片 ⋯ 菜单传送出卡片，进宿主的菜单 band；宿主把 vue 模块里的 Teleport 原样递进来）。 */
+    Teleport: unknown;
     defineComponent: (o: unknown) => unknown;
     reactive: <T extends object>(o: T) => T;
     ref: <T>(v: T) => {

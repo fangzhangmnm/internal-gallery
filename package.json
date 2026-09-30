@@ -1,6 +1,6 @@
 {
   "name": "@internal/gallery",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "PWA 家族图库库：文件管理 + 多库路由 + card view 一屏（WeebPaint 行为 = spec；DocHost 端口切开 gallery↔editor 双向边）",
   "type": "module",
   "license": "MIT",
@@ -26,10 +26,10 @@
     "@microsoft/api-extractor": "^7.58.12",
     "typescript": "5.7.3",
     "@internal/store": "file:./vendor-pkgs/internal-store-0.16.1.tgz",
-    "@internal/workbench-elements": "file:./vendor-pkgs/internal-workbench-elements-0.1.0.tgz"
+    "@internal/workbench-elements": "file:./vendor-pkgs/internal-workbench-elements-0.1.1.tgz"
   },
   "peerDependencies": {
     "@internal/store": ">=0.16.1",
-    "@internal/workbench-elements": ">=0.1.0"
+    "@internal/workbench-elements": ">=0.1.1"
   }
 }

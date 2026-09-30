@@ -3113,6 +3113,7 @@ export interface VueRuntime {
     ref: <T>(v: T) => {
         value: T;
     };
+    Teleport: unknown;
     // (undocumented)
     watch: (src: () => unknown, cb: () => void) => void;
 }
