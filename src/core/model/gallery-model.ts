@@ -7,9 +7,9 @@
 // 本模块只读这些字段；local session / cloud file 本体仍是未类型化 .js。
 import { t } from "../text.ts";
 
-/** 裸名 ↔ 库全名的边界（WeebPaint：`X` ↔ `X.ora`；身份=全名的 app 传恒等/不传）。 */
-export interface NameBoundary { bare: (s: string) => string; full: (bare: string) => string; /** 只管显示（tile 标题）：身份=全名的 app 用它去扩展名；不给 = 显示 basename。 */ display?: (bare: string) => string; }
-const IDENTITY: NameBoundary = { bare: (s) => s, full: (b) => b };
+// （0.6.0：NameBoundary（bare / full / display）退役——裸名当身份是「一个 app 一种扩展名」时代的产物；身份永远是全名，
+//   主干只给人看。切身份、拼身份全走 store.identifiers（提案 store 仓 ai-docs/20260929-proposal-doc-types.md）。）
+import { withStemTail, type Identifiers } from "@internal/store";
 
 export interface LocalSession { name: string; updatedAt?: number; }
 export interface CloudFile { path: string; name?: string; lastModifiedDateTime?: string; }
@@ -20,36 +20,29 @@ export function itemTime(it: GalleryItem): number {
   return (it.local?.updatedAt) || Date.parse(String(it.cloud?.lastModifiedDateTime || 0));
 }
 
-// 复制项目的目标名（纯）：源全路径 → 同文件夹下「<basename> 副本」/「<basename> 副本2」…首个不撞的。
-//   sourceName = 源 item 的完整 name（含文件夹前缀，如 "插画/猫"）；taken(name) = 该全路径名是否已被占用
-//   （本地⊕云端的并集，调用方传入；同步谓词，无网络）。副本保持在源同一文件夹（path 前缀不变）。
-//   后缀策略：第一份不带数字（"猫 副本"），之后递增（"猫 副本2"、"猫 副本3"…）；护栏上限防 taken 恒 true 死循环。
-export function copyTargetName(sourceName: string, taken: (name: string) => boolean): string {
-  const slash = sourceName.lastIndexOf("/");
-  const folder = slash < 0 ? "" : sourceName.slice(0, slash);
-  const base = slash < 0 ? sourceName : sourceName.slice(slash + 1);
-  const join = (stem: string) => (folder ? `${folder}/${stem}` : stem);
+// 复制的目标身份（纯）：同文件夹下「<主干> 副本」/「<主干> 副本2」…首个不撞的，后缀不动（withStemTail：文档插在后缀前、非文档插在最后一个点前）。
+//   taken(identifier) = 是否已被占用（本地⊕云端的并集，调用方传入；同步谓词，无网络）。
+//   0.5.x 及以前在身份末尾接「副本」，名字带后缀的宿主复制出来是 `书.webxiaoheiwu.zip 副本`（认不出的杂物）——提案 §3 第 12 行。
+export function copyTargetName(source: string, taken: (identifier: string) => boolean, ids: Identifiers): string {
   const SUF = t("name.copySuffix");
-  let candidate = join(`${base} ${SUF}`);
+  let candidate = withStemTail(source, ` ${SUF}`, ids);
   if (!taken(candidate)) return candidate;
   for (let i = 2; i < 1000; i++) {
-    candidate = join(`${base} ${SUF}${i}`);
+    candidate = withStemTail(source, ` ${SUF}${i}`, ids);
     if (!taken(candidate)) return candidate;
   }
-  return join(`${base} ${SUF}${Date.now()}`);
+  return withStemTail(source, ` ${SUF}${Date.now()}`, ids);
 }
 
-// 新身份的唯一裸名（v0.10.4 从 gallery-shell 提出成纯函数供 pin）。
+// 新身份的唯一版本（v0.10.4 从 gallery-shell 提出成纯函数供 pin；0.6.0 改收身份，原 uniqueBareName）。
 //   「不静默覆盖旧画」链的第 2 层兜底：第 1 层 = 调用方预检（如 openImageTile 的孪生占用门），
 //   第 3 层 = store 首存 mode:"new" 护栏（占用抛 CloudNameCollisionError，绝不覆盖）。
-//   base（sessionBareName 归一化后）未占用即用；占用 → "base 1"…"base 19"；全占 → 时间戳兜底。
-//   occupied(fullName) 收**库全名 X.ora**（store.files.nameOccupied 的入参约定）；异步（在线含云端一跳）。
-export async function uniqueBareName(stem: string, occupied: (fullName: string) => Promise<unknown>, naming: NameBoundary = IDENTITY): Promise<string> {
-  const base = naming.bare(stem);
-  if (!(await occupied(naming.full(base)))) return base;
+//   未占用即用；占用 → 主干后接 " 1"…" 19"（后缀不动）；全占 → 时间戳兜底。occupied = store.files.occupied（异步，在线含云端一跳）。
+export async function uniqueIdentifier(identifier: string, occupied: (identifier: string) => Promise<unknown>, ids: Identifiers): Promise<string> {
+  if (!(await occupied(identifier))) return identifier;
   for (let i = 1; i < 20; i++) {
-    const candidate = `${base} ${i}`;
-    if (!(await occupied(naming.full(candidate)))) return candidate;
+    const candidate = withStemTail(identifier, ` ${i}`, ids);
+    if (!(await occupied(candidate))) return candidate;
   }
-  return `${base} ${Date.now()}`;
+  return withStemTail(identifier, ` ${Date.now()}`, ids);
 }

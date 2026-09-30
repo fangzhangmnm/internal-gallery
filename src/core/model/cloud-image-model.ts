@@ -3,18 +3,17 @@
 //   gallery 白名单 = 画作（.ora）+ 加密容器（.zip）；图片白名单 = 浏览器可解码集（picker 列举/路由用）。
 //   其余一切（.md / 未知）gallery 和 picker 都不见。tga 等自研解码器落地后在 IMAGE_EXT_RE 扩。
 
-const DOC_EXT_RE = /\.(ora|zip)$/i;
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|avif)$/i;
-export const isDocPath = (p: string): boolean => DOC_EXT_RE.test(p);
 export const isImagePath = (p: string): boolean => IMAGE_EXT_RE.test(p);
 
 /** path → basename（picker 显示名；File 包装名 =「有名保名」命名规范的上游）。 */
 export const imageBasename = (p: string): string => p.slice(p.lastIndexOf("/") + 1);
 
-/** 孪生裸名（v0.9.34 拍板：图库点图片 = 开同夹同名 ora，没有才新建）：foo.png @ 夹A → "夹A/foo"。 */
-export const imageTwinBareName = (folder: string, basename: string): string => {
+/** 孪生身份（v0.9.34 拍板：图库点图片 = 开同夹同主干的文档，没有才新建）：foo.png @ 夹A + 后缀 ".ora" → "夹A/foo.ora"。
+ *  0.6.0：收 docSuffix（宿主 docKinds 表里**第一种**文档的后缀——图片转生成哪一种文档由表的第一行定）。 */
+export const imageTwinIdentifier = (folder: string, basename: string, docSuffix: string): string => {
   const stem = basename.replace(/\.[^.]+$/, "") || basename;
-  return folder ? `${folder}/${stem}` : stem;
+  return `${folder ? `${folder}/` : ""}${stem}${docSuffix}`;
 };
 
 /** File 包装的 MIME（decodeImageFile 实际按字节嗅探，给对只是礼貌）。 */
@@ -35,7 +34,7 @@ export function thumbTargetSize(w: number, h: number, max: number): { w: number;
 }
 
 /** 拿一个不占用的 `${base}.${ext}` / `${base} N.${ext}`（导出到云盘用；兜底加时间戳保证必返回）。
- *  isOccupied = store.files.nameOccupied 注入（本模块保持零 store 依赖可测）。 */
+ *  isOccupied = store.files.occupied 注入（本模块保持零 store 依赖可测）。 */
 export async function nextFreeExportName(
   base: string, ext: string,
   isOccupied: (name: string) => Promise<boolean>,

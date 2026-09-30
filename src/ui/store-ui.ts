@@ -4,7 +4,6 @@
 import type { StoreUI, StoreTextKey, StoreTextParams } from "@internal/store";
 import type { NoticeHandle, NoticeOpts } from "@internal/workbench-elements";
 import { t, type GalleryTextKey } from "../core/text.ts";
-import type { NameBoundary } from "../core/model/gallery-model.ts";
 
 /** 宿主提供的 sheet 面（WeebPaint sheets.ts / WXHW sheets.ts 同形；本包不出 sheet UI）。 */
 export interface SyncGateSheets {
@@ -16,7 +15,8 @@ export interface StoreUIDeps {
   showNotice: (opts: NoticeOpts) => NoticeHandle;                          // @internal/workbench-elements
   sheets: SyncGateSheets;
   reportError: (err: unknown, level?: "error" | "warning" | "info" | "log") => void;
-  naming?: NameBoundary;
+  /** 0.6.0：冲突面上给人看的名字（身份 → 主干）。不给 = 显示身份原样。通常 = `(id) => store.identifiers.parse(id)?.stem ?? id`。 */
+  stemOf?: (identifier: string) => string;
   /** 宿主 i18n 接管 store 的 busy 文案（不给 = 包内默认 st.*）。 */
   text?: (key: StoreTextKey, params?: StoreTextParams) => string | undefined;
 }
@@ -30,7 +30,7 @@ const STORE_TEXT_KEYS: Record<StoreTextKey, GalleryTextKey> = {
 const QUIET_KEYS = new Set<StoreTextKey>(["sync.pushing", "file.renaming"]);
 
 export function storeUIFor(d: StoreUIDeps): StoreUI {
-  const bare = d.naming?.bare ?? ((s: string) => s);
+  const bare = d.stemOf ?? ((s: string) => s);
   let _quietDepth = 0, _quietNotice: NoticeHandle | null = null;
   async function quietBusy<T>(label: string, fn: () => Promise<T>): Promise<T> {
     _quietDepth++;

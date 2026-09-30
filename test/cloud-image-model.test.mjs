@@ -3,28 +3,17 @@
 // 白底平铺、jpeg 编码接缝是纯的，钉在这里。
 import { describe, it, assert, eq } from "./runner.mjs";
 import {
-  isDocPath, isImagePath, imageBasename, mimeForImageName,
-  imageThumbToken, thumbTargetSize, flattenOntoWhite, nextFreeExportName, imageTwinBareName,
+  isImagePath, imageBasename, mimeForImageName,
+  imageThumbToken, thumbTargetSize, flattenOntoWhite, nextFreeExportName, imageTwinIdentifier,
 } from "../src/core/model/cloud-image-model.ts";
 
-describe("cloud-image · 扩展名路由（gallery 白名单 / 图片白名单）", () => {
-  it("gallery 只认画作与加密容器", () => {
-    assert(isDocPath("foo.ora") && isDocPath("a/b/画.ORA"), ".ora 大小写都算");
-    assert(isDocPath("foo.ora.zip"), "加密容器 X.ora.zip");
-    assert(!isDocPath("claude.md") && !isDocPath("notes.txt"), "杂物不进 gallery");
-    assert(!isDocPath("mock.png"), "图片不进 gallery（拍板：不 distract）");
-  });
+describe("cloud-image · 图片白名单（0.6.0：「哪些是文档」归 store.identifiers，本模块只剩图片）", () => {
   it("图片白名单 = 浏览器可解码集", () => {
     for (const p of ["a.png", "b.jpg", "c.JPEG", "d.gif", "e.webp", "f.bmp", "g.avif", "夹/图.png"]) {
       assert(isImagePath(p), `${p} 应是图片`);
     }
     for (const p of ["a.ora", "a.ora.zip", "a.md", "a.psd", "a.svg", "a.tga", "png"]) {
       assert(!isImagePath(p), `${p} 不该进图片白名单（svg/tga 显式后置，spec §3）`);
-    }
-  });
-  it("两个白名单互斥（一个文件绝不同时进 gallery 和 picker）", () => {
-    for (const p of ["a.ora", "a.zip", "a.png", "a.jpg", "a.md"]) {
-      assert(!(isDocPath(p) && isImagePath(p)), p);
     }
   });
   it("basename / MIME", () => {
@@ -51,12 +40,12 @@ describe("cloud-image · 缩略图 token/尺寸（错了会缓存不失效或糊
   });
 });
 
-describe("cloud-image · 孪生裸名（v0.9.34 图库点图片=开同名 ora）", () => {
-  it("夹前缀 + 去扩展名", () => {
-    eq(imageTwinBareName("素材/mock", "ui-a.png"), "素材/mock/ui-a");
-    eq(imageTwinBareName("", "foo.jpeg"), "foo");
-    eq(imageTwinBareName("A", "多点.名.webp"), "A/多点.名", "只去最后一个扩展名");
-    eq(imageTwinBareName("A", "无扩展名"), "A/无扩展名", "无扩展名整名当 stem");
+describe("cloud-image · 孪生身份（v0.9.34 图库点图片=开同夹同主干的文档；0.6.0 收表里第一种文档的后缀）", () => {
+  it("夹前缀 + 去图片扩展名 + 文档后缀", () => {
+    eq(imageTwinIdentifier("素材/mock", "ui-a.png", ".ora"), "素材/mock/ui-a.ora");
+    eq(imageTwinIdentifier("", "foo.jpeg", ".ora"), "foo.ora");
+    eq(imageTwinIdentifier("A", "多点.名.webp", ".ora"), "A/多点.名.ora", "只去最后一个扩展名");
+    eq(imageTwinIdentifier("A", "无扩展名", ".ora"), "A/无扩展名.ora", "无扩展名整名当主干");
   });
 });
 

@@ -9,17 +9,17 @@
 
 import { isCached, isDirty, type SyncState } from "@internal/store";
 import { t } from "../text.ts";
-import { pathBasename } from "./gallery-path.ts";
 import type { AsideItem } from "./aside.ts";
 
 // （0.5.0：回收站专用的 LocalSessionMeta / CloudFileMeta / TrashGItem / TrashTile / trashTileFor 退役——
 //   它们是 WeebPaint 本地 session 时代的形状（thumb / updatedAt / size 这些字段数据面从来没填过），
 //   回收站和备份箱现在共用 core/model/aside.ts 的 AsideItem。）
 
-/** 0.4.0（user 2026-09-19「gallery 该直接吃 syncState」）：图库消费的文件项 = store Item 的裸名视图。
+/** 0.4.0（user 2026-09-19「gallery 该直接吃 syncState」）：图库消费的文件项 = store Item 切开之后的视图。
  *  **唯一状态源 = syncState（store 9 态）**；徽章 / 菜单 / 缩略图来源全从它算，本包不再派生 local/cloud/dirty/ghost… 一堆布尔
- *  （那正是 store Item 注释警告的「下游重推导越狱」形状）。size / lastModified 是数据不是状态。 */
-export interface GItem { name: string; syncState: SyncState; size?: number; lastModified?: number }
+ *  （那正是 store Item 注释警告的「下游重推导越狱」形状）。size / lastModified 是数据不是状态。
+ *  0.6.0：identifier = 身份（原 name，裸名时代的产物退役）；stem / kind 来自 store.identifiers.parse——图库里只有文档（parse 得出的）才是 GItem。 */
+export interface GItem { identifier: string; stem: string; kind: string; syncState: SyncState; size?: number; lastModified?: number }
 
 // 读状态的三个谓词——全包唯一允许「看 syncState 分支」的地方（模板 / verbs 只准用它们，不准再写 `s === "…"`）。
 /** 本地有字节副本（store isCached：synced / unpushed / newer-on-cloud / conflict / ghost / pendingGone / float / local-only）。 */
@@ -35,9 +35,9 @@ export const cloudBytesNewer = (s: SyncState): boolean => s === "newer-on-cloud"
 export type BadgeKind = "syncedBoth" | "dirtyBoth" | "cloudOnly" | "localOnly" | "float" | "ghost" | "pendingGone" | "newerOnCloud" | "conflictBoth";   // 9 值 = store SyncState 一一对应（2026-09-09 补 float：从未同步 ∧ 有编辑）
 
 export interface GalleryTile {
-  name: string;          // 全 path-name（key / 移动改名用）
-  displayName: string;   // basename（子夹内只显文件名）
-  fullPath: string;      // = name（tooltip）
+  identifier: string;    // 身份（key / 移动改名用；tooltip）
+  stem: string;          // 主干 = 卡片上显示的名字
+  kind: string;          // 文档种类（宿主的标签；缩略图策略按它）
   time: number;          // ms epoch
   size: number;          // bytes
   syncState: SyncState;  // 0.4.0：原样带着（宿主 hook / 调试）
@@ -59,15 +59,15 @@ const BADGE_OF: Record<SyncState, BadgeKind> = {
 };
 export function tileFor(
   item: GItem,
-  opts: { signedIn: boolean; activeName: string | null; encrypted?: boolean },
+  opts: { signedIn: boolean; activeIdentifier: string | null; encrypted?: boolean },
 ): GalleryTile {
   const s = item.syncState;
   const badge = BADGE_OF[s] ?? "localOnly";
   const badgeTitle = badge === "localOnly" && !opts.signedIn ? t("gv.badge.localPlain") : t(`gv.badge.${badge}` as Parameters<typeof t>[0]);
   return {
-    name: item.name,
-    displayName: pathBasename(item.name),
-    fullPath: item.name,
+    identifier: item.identifier,
+    stem: item.stem,
+    kind: item.kind,
     time: item.lastModified ?? 0,
     size: item.size ?? 0,
     syncState: s,
@@ -75,7 +75,7 @@ export function tileFor(
     hasLocal: hasLocalCopy(s), hasCloud: hasCloudCopy(s), cloudNewer: cloudBytesNewer(s),
     ghost: s === "ghost",
     pendingGone: s === "pendingGone",
-    isActive: !!opts.activeName && item.name === opts.activeName,
+    isActive: !!opts.activeIdentifier && item.identifier === opts.activeIdentifier,
     // 加密态由调用方探测后注入（store 的 Item 内容盲、没有 encrypted 轴）。
     encrypted: !!opts.encrypted,
   };
@@ -100,7 +100,8 @@ export function breadcrumb(folder: string): Crumb[] {
 // 搁置区 tile（回收站 / 备份箱）：在哪一端 + 什么时候挪到一边的。
 export interface AsideTile {
   key: string;
-  name: string;
+  identifier: string;
+  stem: string;          // 文档 = 主干；非文档 = 最后一段
   at: number;
   source: string;        // 本地 / 云端 / 本地+云端（回收站另有「云端仍在」）
 }
@@ -130,7 +131,7 @@ export function humanSize(b: number | null | undefined): string {
 export function asideTileFor(item: AsideItem): AsideTile {
   const base = item.side === "both" ? t("gv.src.both") : item.side === "local" ? t("gv.src.local") : t("gv.src.cloud");
   const source = item.conflictLive ? t("gv.src.cloudStillAlive", { base }) : base;   // 离线删被撤销：本地回收站有、云端还活着 → 提示两存
-  return { key: item.key, name: item.name, at: item.at, source };
+  return { key: item.key, identifier: item.identifier, stem: item.stem, at: item.at, source };
 }
 /** 完整钟点（卡片副行的 tooltip：同一份稿一小时内留了两版底，「1 小时前」分不出来）。 */
 export function fullTime(ts: number): string {

@@ -4,13 +4,16 @@
 //   移动只给「上级 + 可见子夹」绝不 poll 全树；复制加密源原样搬密文；清空回收站部分失败必说。屏幕层只负责调 + reload。
 import { hasLocalCopy, hasCloudCopy, hasUnpushed, type GItem } from "./model/gallery-view-model.ts";
 import { ASIDE, type AsideItem, type AsideKind, type AsideScope, type AsideEmptyResult } from "./model/aside.ts";
-import { copyTargetName, type NameBoundary } from "./model/gallery-model.ts";
-import { pathFolder, pathBasename, pathJoin } from "./model/gallery-path.ts";
+import { copyTargetName } from "./model/gallery-model.ts";
+import { pathFolder, pathJoin } from "./model/gallery-path.ts";
+import type { Identifiers } from "@internal/store";
 import { naturalCompare } from "./model/natural-order.ts";
 import { t } from "./text.ts";
 
 export interface VerbHost {
-  signedIn(): boolean; online(): boolean; activeName(): string | null;
+  signedIn(): boolean; online(): boolean;
+  /** 当前打开的文档的身份（0.6.0 起叫 activeIdentifier，原 activeName）。 */
+  activeIdentifier(): string | null;
   confirm(title: string, msg: string): Promise<boolean>;
   input(title: string, def: string, opts?: { placeholder?: string }): Promise<string | null>;
   chooseFolder(title: string, msg: string, options: { label: string; value: string }[]): Promise<string | null>;
@@ -19,12 +22,14 @@ export interface VerbHost {
 }
 /** 编辑器侧（DocHost 的动词子集）：只管**当前打开**的那份。 */
 export interface VerbDoc {
+  /** 改当前打开的那份的名字（编辑器自己的改名 UI）；返回新身份，没改 → null。 */
   renameActive(): Promise<string | null>;
-  setName(name: string): void;
+  /** 当前打开的那份被图库挪了文件夹 → 告诉编辑器新身份（0.6.0 起叫 setIdentifier，原 setName）。 */
+  setIdentifier(identifier: string): void;
   push(item: GItem): Promise<void>;
   unload(item: GItem): Promise<void>;
   exit(): Promise<void>;
-  dropCheckpoint(name: string): Promise<void> | void;
+  dropCheckpoint(identifier: string): Promise<void> | void;
 }
 export interface VerbFile {
   tryMove(to: string): Promise<{ ok: true } | { ok: false; where: "local" | "cloud" }>;
@@ -39,9 +44,10 @@ export interface VerbFile {
   keepOffline(opts?: { onProgress?: (done: number, total: number) => void }): Promise<void>;
 }
 export interface VerbStore {
-  file(name: string, opts: { isZip: boolean; mode: "new" | "existing" }): VerbFile;
+  identifiers: Identifiers;
+  file(identifier: string, opts: { mode: "new" | "existing" }): VerbFile;
   files: {
-    nameOccupied(name: string): Promise<unknown>;
+    occupied(identifier: string): Promise<unknown>;
     deleteFolder(path: string): Promise<unknown>;
     restoreTrash(o: { trashKey: string | null; fromCloud: boolean; cloudRef: string | null; targetName: string; encrypted: boolean }): Promise<{ name?: string }>;
     purgeTrash(o: { trashKey: string | null; cloudRef: string | null }): Promise<unknown>;
@@ -60,50 +66,46 @@ export interface VerbDeps {
   store: () => VerbStore;
   host: VerbHost;
   doc: VerbDoc;
-  naming?: NameBoundary;
-  /** 这份文档在 store 里是不是 zip 容器（WeebPaint .ora 恒 true；WXHW .txt false / .webxiaoheiwu.zip true）。 */
-  isZipDoc?: (fullName: string) => boolean;
-  thumbs?: { invalidate(name: string): Promise<void> | void };
-  onEncryptionChanged?: (name: string) => void;
+  // （0.6.0：naming / isZipDoc 退役——身份怎么切、是不是 zip 容器都是 store.identifiers 的事；动词只需要 RawFile 面，不用 zip()。）
+  thumbs?: { invalidate(identifier: string): Promise<void> | void };
+  onEncryptionChanged?: (identifier: string) => void;
   encryption?: VerbEncryption;
   // （0.3.1 的 onRenamed hook 0.3.2 撤：改名是身份变更、事件源在 store（`store.files.onRenamed`，0.14.0）；图库只是发起改名的前端——user 2026-09-19「gallery 是前端」。）
 }
-const IDENTITY: NameBoundary = { bare: (s) => s, full: (b) => b };
 const errMsg = (e: unknown) => String((e as { message?: unknown })?.message || e);
 
 export function createGalleryVerbs(d: VerbDeps) {
-  const naming = d.naming ?? IDENTITY;
-  const isZipDoc = d.isZipDoc ?? (() => true);
-  const docFile = (bare: string, mode: "new" | "existing" = "existing") => { const full = naming.full(bare); return d.store().file(full, { isZip: isZipDoc(full), mode }); };
+  const docFile = (identifier: string, mode: "new" | "existing" = "existing") => d.store().file(identifier, { mode });
+  const ids = () => d.store().identifiers;
   const whereLabel = (where: "local" | "cloud") => (where === "local" ? t("gal.loc.local") : t("gal.loc.cloud"));
+  /** 文案里给人看的名字：文档 = 主干；不是文档 = 最后一段。 */
+  const stemOf = (identifier: string): string => ids().parse(identifier)?.stem ?? identifier.slice(identifier.lastIndexOf("/") + 1);
   const cloudOn = () => d.host.signedIn() && d.host.online();
 
   async function rename(item: GItem): Promise<void> {
-    if (item.name === d.host.activeName()) {
+    if (item.identifier === d.host.activeIdentifier()) {
       const nn = await d.doc.renameActive();
-      if (nn && nn !== item.name) d.host.status(t("gal.st.renamed2", { from: item.name, to: nn }));
+      if (nn && nn !== item.identifier) d.host.status(t("gal.st.renamed2", { from: item.stem, to: stemOf(nn) }));
       return;
     }
     // v267：重名/失败要 surface——错误写进重弹的输入框标题并循环重试，输入不丢。
-    // 0.4.1（2026-09-26，WXHW user「重命名的时候不应该包含扩展名(.webxiaoheiwu.zip)」→「修」）：身份 = 全名的宿主（给了 naming.display 去扩展名）
-    //   改名**只编辑主干**：输入框默认值 = display(name)，确认后把原名被 display 去掉的那截后缀自动补回（用户自己打了同样后缀不重复）。
-    //   以前默认值 = 全名、结果原样交 tryMove：把 `.webxiaoheiwu.zip` 删掉再确认 = 文件真改成无扩展名 → 宿主不认 → 从书库消失。
-    //   裸名↔全名有边界的宿主（WeebPaint `X`↔`X.ora`，不给 display）行为不变。
-    const shown = naming.display ? naming.display(item.name) : item.name;
-    const suffix = naming.display && item.name.startsWith(shown) ? item.name.slice(shown.length) : "";
-    const withSuffix = (typed: string): string => (suffix && !typed.toLowerCase().endsWith(suffix.toLowerCase()) ? typed + suffix : typed);
-    let candidate = shown, note = "";
+    // 0.4.1（2026-09-26，WXHW user「重命名的时候不应该包含扩展名(.webxiaoheiwu.zip)」→「修」）：改名**只编辑主干**，后缀不动。
+    //   0.6.0：主干 / 后缀直接从 store.identifiers 切（不再从显示名倒推）。用户自己把后缀打进去了就不重复补。
+    const d0 = ids().parse(item.identifier);
+    const suffix = d0?.suffix ?? "", folder = d0?.folder ?? pathFolder(item.identifier);
+    const withSuffix = (typed: string): string => (suffix && typed.toLowerCase().endsWith(suffix.toLowerCase()) ? typed.slice(0, typed.length - suffix.length) : typed);
+    let candidate = item.stem, note = "";
     while (true) {
       const input = await d.host.input(note ? t("gal.dlg.renameNote", { note }) : t("gal.dlg.rename"), candidate, { placeholder: t("gal.ph.newName") });
       if (input == null) { d.host.status(t("gal.st.cancelled")); return; }
       const trimmed = input.trim();
       if (!trimmed) { candidate = ""; note = t("gal.note.empty"); continue; }
-      const target = withSuffix(trimmed);
-      const shownTarget = suffix ? target.slice(0, target.length - suffix.length) : target;
-      if (target === item.name) { d.host.status(t("gal.st.nameUnchanged")); return; }
-      const result = await d.host.busy<{ taken?: string; ok?: boolean; error?: unknown }>(t("gal.busy.rename", { name: shown, to: shownTarget }), async () => {
+      const shownTarget = withSuffix(trimmed);
+      const target = ids().join({ folder, stem: shownTarget, suffix });
+      if (target === item.identifier) { d.host.status(t("gal.st.nameUnchanged")); return; }
+      const result = await d.host.busy<{ taken?: string; ok?: boolean; error?: unknown }>(t("gal.busy.rename", { name: item.stem, to: shownTarget }), async () => {
         try {
-          const r = await docFile(item.name).tryMove(naming.full(target));   // 占用检查内化在 store.tryMove，不动字节直接返错
+          const r = await docFile(item.identifier).tryMove(target);   // 占用检查内化在 store.tryMove，不动字节直接返错
           if (!r.ok) return { taken: whereLabel(r.where) };
           d.host.status(t("gal.st.renamed", { to: shownTarget }));
           return { ok: true };
@@ -117,41 +119,42 @@ export function createGalleryVerbs(d: VerbDeps) {
 
   /** 移动目标只有「上级 + 当前可见子夹」——用手上的单夹数据，绝不 poll 全树。 */
   function moveTargets(item: GItem, ctx: { folder: string; folderNames: string[] }): string[] {
-    const cur = pathFolder(item.name);
+    const cur = pathFolder(item.identifier);
     const targets: string[] = [];
     if (ctx.folder) targets.push(pathFolder(ctx.folder));
     for (const fn of ctx.folderNames) targets.push(pathJoin(ctx.folder, fn));
     return [...new Set(targets)].filter((f) => f !== cur).sort((a, b) => (a === "" ? -1 : b === "" ? 1 : naturalCompare(a, b)));
   }
   async function move(item: GItem, ctx: { folder: string; folderNames: string[] }): Promise<void> {
-    const base = pathBasename(item.name);
+    const base = item.stem;
     const sorted = moveTargets(item, ctx);
     if (!sorted.length) { d.host.status(t("gal.st.noOtherFolder")); return; }
     const target = await d.host.chooseFolder(t("gal.dlg.moveTitle", { base }), t("gal.dlg.moveMsg"), sorted.map((f) => ({ label: f === "" ? t("gal.rootFolder") : f, value: f })));
     if (target == null) return;
-    const newName = pathJoin(target, base);
-    if (newName === item.name) { d.host.status(t("gal.st.alreadyInFolder")); return; }
+    const d0 = ids().parse(item.identifier);
+    const newIdentifier = d0 ? ids().join({ folder: target, stem: d0.stem, suffix: d0.suffix }) : pathJoin(target, item.identifier.slice(item.identifier.lastIndexOf("/") + 1));
+    if (newIdentifier === item.identifier) { d.host.status(t("gal.st.alreadyInFolder")); return; }
     await d.host.busy(t("gal.busy.move", { base, target: target || t("gal.root") }), async () => {
       try {
-        const r = await docFile(item.name).tryMove(naming.full(newName));
+        const r = await docFile(item.identifier).tryMove(newIdentifier);
         if (!r.ok) { d.host.status(t("gal.st.nameTakenTarget", { loc: whereLabel(r.where), base }), true); return; }
-        if (item.name === d.host.activeName()) d.doc.setName(newName);
+        if (item.identifier === d.host.activeIdentifier()) d.doc.setIdentifier(newIdentifier);
         d.host.status(t("gal.st.moved", { target: target || t("gal.root") }));
       } catch (e: unknown) { d.host.status(t("gal.st.moveFail", { e: errMsg(e) }), true); }
     });
   }
 
-  /** 复制：加密源原样搬密文（不解壳不问密码；明文派生物不落持久层），明文源 open()；目标名 = 同夹「<名> 副本」按当前夹快照去重。 */
-  async function copy(item: GItem, currentNames: readonly string[]): Promise<void> {
-    await d.host.busy(t("gal.busy.copy", { base: pathBasename(item.name) }), async () => {
+  /** 复制：加密源原样搬密文（不解壳不问密码；明文派生物不落持久层），明文源 open()；目标 = 同夹「<主干> 副本」按当前夹快照去重，后缀不动。 */
+  async function copy(item: GItem, currentIdentifiers: readonly string[]): Promise<void> {
+    await d.host.busy(t("gal.busy.copy", { base: item.stem }), async () => {
       try {
-        const src = docFile(item.name);
+        const src = docFile(item.identifier);
         const bytes: Blob | null = (await src.getEncryptedBlob()) ?? (await src.open());
         if (!bytes) { d.host.status(t("gal.st.copyNoBytes"), true); return; }
-        const taken = new Set(currentNames);
-        const newName = copyTargetName(item.name, (n) => taken.has(n));
-        await docFile(newName, "new").save(bytes, { tryPush: cloudOn() });
-        d.host.status(t("gal.st.copied", { name: pathBasename(newName) }));
+        const taken = new Set(currentIdentifiers);
+        const newIdentifier = copyTargetName(item.identifier, (n) => taken.has(n), ids());
+        await docFile(newIdentifier, "new").save(bytes, { tryPush: cloudOn() });
+        d.host.status(t("gal.st.copied", { name: stemOf(newIdentifier) }));
       } catch (e: unknown) { d.host.status(t("gal.st.copyFail", { e: errMsg(e) }), true); }
     });
   }
@@ -160,8 +163,8 @@ export function createGalleryVerbs(d: VerbDeps) {
   async function unload(item: GItem): Promise<void> { await d.doc.unload(item); }
   /** 0.3.0（JRB）：纯云端件「留一份离线」——不打开文档，只囤字节（读者在 wifi 下把一晚要读的先囤好）。与 pullLocal（= 打开即缓存）分工。失败走 status 不抛。 */
   async function keepOffline(item: GItem): Promise<void> {
-    await d.host.busy(t("gal.busy.keepOffline", { name: item.name }), async () => {
-      try { await docFile(item.name).keepOffline(); d.host.status(t("gal.st.keptOffline", { name: item.name })); }
+    await d.host.busy(t("gal.busy.keepOffline", { name: item.stem }), async () => {
+      try { await docFile(item.identifier).keepOffline(); d.host.status(t("gal.st.keptOffline", { name: item.stem })); }
       catch (e: unknown) { d.host.status(t("gal.st.keepOfflineFail", { e: errMsg(e) }), true); }
     });
   }
@@ -169,12 +172,12 @@ export function createGalleryVerbs(d: VerbDeps) {
   async function reupload(item: GItem): Promise<void> {
     await d.host.busy(t("gal.busy.reupload"), async () => {
       try {
-        const r = await docFile(item.name).reupload();
+        const r = await docFile(item.identifier).reupload();
         if (r.status === "no-local") { d.host.status(t("gal.st.reuploadFail", { e: "no-local" }), true); return; }
-        d.host.status(t("gal.st.reuploaded", { name: item.name }));
+        d.host.status(t("gal.st.reuploaded", { name: item.stem }));
       } catch (e: unknown) {
         const msg = errMsg(e);
-        if ((e as { name?: string })?.name === "CloudNameCollisionError" || /collision|已存在|exists/i.test(msg)) d.host.status(t("gal.st.reuploadConflict", { name: item.name }), true);
+        if ((e as { name?: string })?.name === "CloudNameCollisionError" || /collision|已存在|exists/i.test(msg)) d.host.status(t("gal.st.reuploadConflict", { name: item.stem }), true);
         else d.host.status(t("gal.st.reuploadFail", { e: msg }), true);
       }
     });
@@ -182,33 +185,33 @@ export function createGalleryVerbs(d: VerbDeps) {
 
   /** 删除 = 移回收站；诚实读 DelResult（cancelled / noop / 只删了本地 都不许报「已删除」）。 */
   async function del(item: GItem): Promise<void> {
-    const isActive = item.name === d.host.activeName();
+    const isActive = item.identifier === d.host.activeIdentifier();
     const isLocal = hasLocalCopy(item.syncState), isCloud = hasCloudCopy(item.syncState);
     const dirty = isLocal && isCloud && hasUnpushed(item.syncState);
     let detail = isLocal && isCloud ? (dirty ? t("gal.del.dirtyDetail") : t("gal.del.syncedDetail")) : isCloud ? t("gal.del.cloudDetail") : t("gal.del.localDetail");
     if (isActive) detail += t("gal.del.activeSuffix");
-    if (!(await d.host.confirm(t("gal.dlg.delTitle", { name: item.name }), detail))) return;
-    await d.host.busy(t("gal.busy.del", { name: item.name }), async () => {
+    if (!(await d.host.confirm(t("gal.dlg.delTitle", { name: item.stem }), detail))) return;
+    await d.host.busy(t("gal.busy.del", { name: item.stem }), async () => {
       try {
-        const del = await docFile(item.name).delete();
-        if (del.status === "cancelled") { d.host.status(t("gal.st.delCancelled", { name: item.name })); return; }
-        void d.doc.dropCheckpoint(item.name);
+        const del = await docFile(item.identifier).delete();
+        if (del.status === "cancelled") { d.host.status(t("gal.st.delCancelled", { name: item.stem })); return; }
+        void d.doc.dropCheckpoint(item.identifier);
         if (isActive) await d.doc.exit();
-        d.host.status(del.status === "noop" ? t("gal.st.delNothing", { name: item.name })
-          : del.queuedCloudDelete === false ? t("gal.st.delLocalOnly", { name: item.name })
-          : t("gal.st.deleted", { name: item.name }), del.status === "noop" || del.queuedCloudDelete === false);
+        d.host.status(del.status === "noop" ? t("gal.st.delNothing", { name: item.stem })
+          : del.queuedCloudDelete === false ? t("gal.st.delLocalOnly", { name: item.stem })
+          : t("gal.st.deleted", { name: item.stem }), del.status === "noop" || del.queuedCloudDelete === false);
       } catch (e: unknown) { d.host.status(t("gal.st.delFail", { e: errMsg(e) }), true); }
     });
   }
-  async function deleteImage(img: { path: string; name: string }): Promise<void> {
-    if (!(await d.host.confirm(t("gal.dlg.delTitle", { name: img.name }), t("gal.del.imageDetail")))) return;
-    await d.host.busy(t("gal.busy.del", { name: img.name }), async () => {
+  async function deleteImage(img: { identifier: string; label: string }): Promise<void> {
+    if (!(await d.host.confirm(t("gal.dlg.delTitle", { name: img.label }), t("gal.del.imageDetail")))) return;
+    await d.host.busy(t("gal.busy.del", { name: img.label }), async () => {
       try {
-        const del = await d.store().file(img.path, { isZip: false, mode: "existing" }).delete();
-        if (del.status === "cancelled") { d.host.status(t("gal.st.delCancelled", { name: img.name })); return; }
-        d.host.status(del.status === "noop" ? t("gal.st.delNothing", { name: img.name })
-          : del.queuedCloudDelete === false ? t("gal.st.delLocalOnly", { name: img.name })
-          : t("gal.st.deleted", { name: img.name }), del.status === "noop" || del.queuedCloudDelete === false);
+        const del = await d.store().file(img.identifier, { mode: "existing" }).delete();
+        if (del.status === "cancelled") { d.host.status(t("gal.st.delCancelled", { name: img.label })); return; }
+        d.host.status(del.status === "noop" ? t("gal.st.delNothing", { name: img.label })
+          : del.queuedCloudDelete === false ? t("gal.st.delLocalOnly", { name: img.label })
+          : t("gal.st.deleted", { name: img.label }), del.status === "noop" || del.queuedCloudDelete === false);
       } catch (e: unknown) { d.host.status(t("gal.st.delFail", { e: errMsg(e) }), true); }
     });
   }
@@ -220,21 +223,21 @@ export function createGalleryVerbs(d: VerbDeps) {
   // ── 搁置区（回收站 / 备份箱，0.5.0）：恢复 / 彻底删只认 item 自带的两把钥匙（localKey / cloudRef），
   //    store 的 restoreTrash / purgeTrash 两个分区都认；清空调哪个、说什么话走 ASIDE 表。 ──
   async function asideRestore(item: AsideItem): Promise<void> {
-    await d.host.busy(t("gal.busy.restore", { name: item.name }), async () => {
+    await d.host.busy(t("gal.busy.restore", { name: item.stem }), async () => {
       try {
         const res = await d.store().files.restoreTrash({
           trashKey: item.localKey, fromCloud: !!item.cloudRef, cloudRef: item.cloudRef,
-          targetName: naming.full(item.name), encrypted: item.encrypted,
+          targetName: item.identifier, encrypted: item.encrypted,
         });
-        const rn = res.name ? naming.bare(res.name) : item.name;
-        d.host.status(rn !== item.name ? t("gal.st.restoredRenamed", { name: rn, orig: item.name }) : t("gal.st.restored", { name: rn }));
+        const rn = res.name ?? item.identifier;
+        d.host.status(rn !== item.identifier ? t("gal.st.restoredRenamed", { name: stemOf(rn), orig: item.stem }) : t("gal.st.restored", { name: item.stem }));
       } catch (e: unknown) { d.host.status(t("gal.st.restoreFail", { e: errMsg(e) }), true); }
     });
   }
   async function asidePurge(item: AsideItem): Promise<void> {
-    if (!(await d.host.confirm(t("gal.dlg.purgeTitle", { name: item.name }), t("gal.dlg.purgeMsg")))) return;
-    await d.host.busy(t("gal.busy.purge", { name: item.name }), async () => {
-      try { await d.store().files.purgeTrash({ trashKey: item.localKey, cloudRef: item.cloudRef }); d.host.status(t("gal.st.purged", { name: item.name })); }
+    if (!(await d.host.confirm(t("gal.dlg.purgeTitle", { name: item.stem }), t("gal.dlg.purgeMsg")))) return;
+    await d.host.busy(t("gal.busy.purge", { name: item.stem }), async () => {
+      try { await d.store().files.purgeTrash({ trashKey: item.localKey, cloudRef: item.cloudRef }); d.host.status(t("gal.st.purged", { name: item.stem })); }
       catch (e: unknown) { d.host.status(t("gal.st.purgeFail", { e: errMsg(e) }), true); }
     });
   }
@@ -256,7 +259,7 @@ export function createGalleryVerbs(d: VerbDeps) {
 
   // ── 加密 intent（ADR-0012）：transform 与密码循环在 store；这里只剩活动项预检、首次设密码 UX、残留清理 ──
   function _encPrecheck(item: GItem, verb: string): boolean {
-    if (item.name === d.host.activeName()) { d.host.status(t("gal.st.openActive", { verb }), true); return false; }
+    if (item.identifier === d.host.activeIdentifier()) { d.host.status(t("gal.st.openActive", { verb }), true); return false; }
     if (!hasLocalCopy(item.syncState)) { d.host.status(t("gal.st.cloudPullFirst", { verb }), true); return false; }
     return true;
   }
@@ -264,11 +267,11 @@ export function createGalleryVerbs(d: VerbDeps) {
     if (res.status === "offline") { d.host.status(t("gal.st.encNeedOnline"), true); return false; }
     if (res.status === "no-local") { d.host.status(t("gal.st.noLocalBytes"), true); return false; }
     if (res.status === "locked") { d.host.status(t("gal.st.cancelledPw"), true); return false; }
-    if (res.status === "conflict") d.host.status(t("gal.st.encConflict", { name: item.name }), true);
+    if (res.status === "conflict") d.host.status(t("gal.st.encConflict", { name: item.stem }), true);
     else if (res.status === "cloud-deferred") d.host.status(t("gal.st.encDeferred", { okMsg }), true);
     else d.host.status(okMsg);
-    await d.thumbs?.invalidate(item.name);
-    d.onEncryptionChanged?.(item.name);
+    await d.thumbs?.invalidate(item.identifier);
+    d.onEncryptionChanged?.(item.identifier);
     return true;
   }
   async function encryptItem(item: GItem): Promise<void> {
@@ -280,9 +283,9 @@ export function createGalleryVerbs(d: VerbDeps) {
     enc.setPassword(pw);
     let ok = false;
     try {
-      const res = await docFile(item.name).encrypt({ isOnline: cloudOn });
+      const res = await docFile(item.identifier).encrypt({ isOnline: cloudOn });
       if (res.status === "already") { d.host.status(t("gal.st.alreadyEnc")); return; }
-      if (!(await _afterSwap(item, res, t("gal.st.encryptedOk", { name: item.name })))) return;
+      if (!(await _afterSwap(item, res, t("gal.st.encryptedOk", { name: item.stem })))) return;
       ok = true;
     } catch (e: unknown) { d.host.status(t("gal.st.encFail", { e: errMsg(e) }), true); }
     finally { if (fresh && !ok) enc.rollbackFreshPassword(); }   // ③ 2026-09-09 加密合规审计：首次创建的密码只有加密成功才算数
@@ -290,12 +293,12 @@ export function createGalleryVerbs(d: VerbDeps) {
   async function decryptItem(item: GItem): Promise<void> {
     const enc = d.encryption; if (!enc) return;
     if (!_encPrecheck(item, t("gal.verb.decrypt"))) return;
-    if (!(await d.host.confirm(t("gal.dlg.decryptTitle", { base: pathBasename(item.name) }), t("gal.dlg.decryptMsg")))) return;
-    if (!(await enc.ensureUnlocked(item.name))) { d.host.status(t("gal.st.cancelledPw"), true); return; }   // 解锁在 busy 之前
+    if (!(await d.host.confirm(t("gal.dlg.decryptTitle", { base: item.stem }), t("gal.dlg.decryptMsg")))) return;
+    if (!(await enc.ensureUnlocked(item.identifier))) { d.host.status(t("gal.st.cancelledPw"), true); return; }   // 解锁在 busy 之前
     try {
-      const res = await docFile(item.name).decrypt({ isOnline: cloudOn });
+      const res = await docFile(item.identifier).decrypt({ isOnline: cloudOn });
       if (res.status === "not-encrypted") { d.host.status(t("gal.st.notEnc")); return; }
-      await _afterSwap(item, res, t("gal.st.decrypted", { name: item.name }));
+      await _afterSwap(item, res, t("gal.st.decrypted", { name: item.stem }));
     } catch (e: unknown) { d.host.status(t("gal.st.decryptFail", { e: errMsg(e) }), true); }
   }
   async function unlock(name: string): Promise<boolean> {

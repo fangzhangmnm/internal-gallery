@@ -5,8 +5,7 @@ import type { GItem } from "../core/model/gallery-view-model.ts";
 import { tileFor, breadcrumb, asideTileFor, humanTime, humanSize, fullTime, hasLocalCopy } from "../core/model/gallery-view-model.ts";
 import { ASIDE, type AsideItem, type AsideKind, type AsideScope } from "../core/model/aside.ts";
 import { pathJoin } from "../core/model/gallery-path.ts";
-import type { NameBoundary } from "../core/model/gallery-model.ts";
-import { imageThumbToken, imageTwinBareName, mimeForImageName } from "../core/model/cloud-image-model.ts";
+import { imageThumbToken, imageTwinIdentifier, mimeForImageName } from "../core/model/cloud-image-model.ts";
 import { createFrameGate } from "../core/guards/frame-gate.ts";
 import { createFirstFrameWatchdog } from "../core/guards/first-frame-watchdog.ts";
 import { note as diagNote } from "../core/guards/diag-log.ts";
@@ -68,10 +67,9 @@ export interface GalleryScreenDeps {
     subtitle?: (item: GItem) => string | null | undefined;
     marker?: (item: GItem) => "unread" | null | undefined;
   };
-  /** 0.2.1：这份文档有没有缩略图可取（WXHW：txt 稿没有 → 不去尾读、加密 txt 不显锁图标）。不给 = 全部都有（WeebPaint）。 */
-  hasThumb?: (fullName: string) => boolean;
-  naming?: NameBoundary;
-  isZipDoc?: (fullName: string) => boolean;
+  /** 0.6.0（原 0.2.1 hasThumb）：哪几个文档种类有缩略图（docKinds 的 kind）。createGallery 从 policy.thumbs.kinds 填；空 = 都没有。
+   *  没有缩略图的种类不去尾读、加密件不显锁图标（WXHW 的 txt 稿）。 */
+  thumbKinds?: readonly string[];
   thumbs?: ThumbCache;
   imageThumbs?: { getOrFetch(path: string, token: string): Promise<Blob> };
   encryption?: GalleryEncryption;
@@ -115,15 +113,13 @@ function thumbLoadPixelated(e: Event): boolean {
   const img = e.target as HTMLImageElement; const edge = Math.max(img.naturalWidth, img.naturalHeight);
   return edge > 0 && edge < PIXELATED_THUMB_MAX_EDGE;
 }
-const IDENTITY: NameBoundary = { bare: (s) => s, full: (b) => b };
-
 export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): GalleryHandle {
   const { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick } = d.vue;
-  const naming = d.naming ?? IDENTITY;
   const icon = d.ui.iconHtml;
   const phHtml = (name: string): string => d.ui.tilePlaceholderHtml?.(name) ?? "";   // 0.1.2：宿主给的占位图标；空 = 退回名字首字
   const ovHtml = (name: string): string => { try { return d.ui.tileOverlayHtml?.(name) ?? ""; } catch { return ""; } };   // 0.5.0：宿主盖在封面上的一层
-  const hasThumb = (name: string): boolean => d.hasThumb?.(name) ?? true;
+  const thumbKinds = new Set(d.thumbKinds ?? []);
+  const hasThumb = (kind: string | null): boolean => kind != null && thumbKinds.has(kind);
   const ICON = {
     localOnly: icon("database"), cloudOnly: icon("cloud"), syncedBoth: icon("cloud-synced"), dirtyBoth: icon("cloud-upload"),
     float: icon("cloud-upload"), folder: icon("folder"), cloudBig: icon("cloud"),
@@ -135,7 +131,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
   enc?.onLockChange((u) => { _lockState.unlocked = u; });
   const _thumbRev = reactive(new Map<string, number>());
   d.thumbs?.onInvalidated((key) => { _thumbRev.set(key, (_thumbRev.get(key) ?? 0) + 1); });
-  const thumbKey = (bare: string) => naming.full(bare);
+  const thumbKey = (identifier: string) => identifier;
 
   const ThumbCell = defineComponent({
     name: "ThumbCell",
@@ -198,14 +194,14 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
 
   const ImageThumbCell = defineComponent({
     name: "ImageThumbCell",
-    props: { path: { type: String, required: true }, token: { type: String, default: "" }, fallback: { type: String, default: "?" }, alt: { type: String, default: "" } },
-    setup(props: { path: string; token: string; fallback: string; alt: string }) {
+    props: { identifier: { type: String, required: true }, token: { type: String, default: "" }, fallback: { type: String, default: "?" }, alt: { type: String, default: "" } },
+    setup(props: { identifier: string; token: string; fallback: string; alt: string }) {
       const url = ref<string | null>(null), root = ref<HTMLElement | null>(null);
       let objUrl: string | null = null, obs: IntersectionObserver | null = null, fetchSeq = 0;
       const fetchThumb = () => {
         if (!d.imageThumbs) return;
         const seq = ++fetchSeq;
-        d.imageThumbs.getOrFetch(props.path, props.token)
+        d.imageThumbs.getOrFetch(props.identifier, props.token)
           .then((blob) => { if (seq !== fetchSeq) return; if (objUrl) URL.revokeObjectURL(objUrl); objUrl = URL.createObjectURL(blob); url.value = objUrl; })
           .catch((err: unknown) => d.reportError(new Error("[gallery] image thumb: " + String(err)), "log"));
       };
@@ -242,12 +238,12 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
 
       let _unsub: (() => void) | null = null, _framedFolder: string | null = null, _awaitingFirst = false, _subscribedAt = 0;
       function applyFrame(snap: GallerySnapshot) {
-        if (view.value !== "files" || snap.path !== folder.value) return;
+        if (view.value !== "files" || snap.folder !== folder.value) return;
         data.files = snap.items; data.images = snap.images; data.others = snap.others; data.folderNames = snap.folderNames;
-        _framedFolder = snap.path; loading.value = false;
-        wd.frame(snap.path);
+        _framedFolder = snap.folder; loading.value = false;
+        wd.frame(snap.folder);
         if (stalled.value) stalled.value = null;
-        if (_awaitingFirst) { _awaitingFirst = false; diagNote("gallery", `first frame folder="${snap.path}" items=${snap.items.length} folders=${snap.folderNames.length} in ${Math.round(performance.now() - _subscribedAt)}ms`); }
+        if (_awaitingFirst) { _awaitingFirst = false; diagNote("gallery", `first frame folder="${snap.folder}" items=${snap.items.length} folders=${snap.folderNames.length} in ${Math.round(performance.now() - _subscribedAt)}ms`); }
         void probeEncrypted();
       }
       const gate = createFrameGate<GallerySnapshot>(applyFrame);
@@ -274,7 +270,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         _awaitingFirst = true; _subscribedAt = performance.now();
         if (loading.value) wd.arm(folder.value); else wd.cancel();
         diagNote("gallery", `subscribe folder="${folder.value}" loading=${loading.value}`);
-        _unsub = d.data.watchFolder(folder.value, (snap) => { if (snap.path !== folder.value) return; if (loading.value) applyFrame(snap); else gate.push(snap); }, { onError: onFrameError });
+        _unsub = d.data.watchFolder(folder.value, (snap) => { if (snap.folder !== folder.value) return; if (loading.value) applyFrame(snap); else gate.push(snap); }, { onError: onFrameError });
       }
       const isVisible = d.isGalleryVisible ?? (() => true);
       const _onGatePtrDown = () => { if (isVisible()) gate.pointerDown(); };
@@ -286,7 +282,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const encByName = reactive<Record<string, boolean>>({});
       async function probeEncrypted() {
         if (!enc) return;
-        for (const nm of data.files.filter((it) => hasLocalCopy(it.syncState)).map((it) => it.name)) {
+        for (const nm of data.files.filter((it) => hasLocalCopy(it.syncState)).map((it) => it.identifier)) {
           if (nm in encByName) continue;
           try { encByName[nm] = await enc.isEncrypted(nm); } catch { encByName[nm] = false; }
         }
@@ -294,7 +290,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       function invalidateEncrypted(name: string) { delete encByName[name]; void probeEncrypted(); }
       async function requestUnlock(): Promise<boolean> {
         await probeEncrypted();
-        for (const it of data.files) { if (!hasLocalCopy(it.syncState) || !encByName[it.name]) continue; return await verbs.unlock(it.name); }
+        for (const it of data.files) { if (!hasLocalCopy(it.syncState) || !encByName[it.identifier]) continue; return await verbs.unlock(it.identifier); }
         return false;
       }
       // 搁置区列表：一次性读（不订阅）。序号守卫：连点切换视图时，晚到的旧结果不许盖掉新视图。
@@ -328,11 +324,11 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       });
 
       const folderTiles = computed(() => data.folderNames.map((fn) => ({ name: fn, path: pathJoin(folder.value, fn) })));
-      const fileTiles = computed(() => data.files.map((it) => { const tile = tileFor(it, { signedIn: d.host.signedIn(), activeName: d.host.activeName(), encrypted: !!encByName[it.name] }); if (naming.display) tile.displayName = naming.display(tile.displayName); return { item: it, t: tile, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.name) }; }));
+      const fileTiles = computed(() => data.files.map((it) => { const tile = tileFor(it, { signedIn: d.host.signedIn(), activeIdentifier: d.host.activeIdentifier(), encrypted: !!encByName[it.identifier] }); return { item: it, t: tile, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.identifier), thumb: hasThumb(it.kind) }; }));
       // 搁置区卡片：取不取缩略图、时间后面跟哪个词，按 item 自带的 kind 查 ASIDE 表
-      const asideTiles = computed(() => aside.value.map((it) => ({ item: it, t: asideTileFor(it), display: naming.display ? naming.display(it.name) : it.name, fetch: ASIDE[it.kind].thumb === "by-name" && hasThumb(it.name), atWord: t(ASIDE[it.kind].text.at), ov: ovHtml(it.name) })));
-      const imageTiles = computed(() => data.images.map((im) => ({ raw: im, path: im.path, name: im.name, size: im.size || 0, time: im.lastModified || 0, token: imageThumbToken(im) })));
-      const otherTiles = computed(() => data.others.map((o) => ({ path: o.path, name: o.name, size: o.size || 0, time: o.lastModified || 0 })));
+      const asideTiles = computed(() => aside.value.map((it) => ({ item: it, t: asideTileFor(it), fetch: ASIDE[it.box].thumb === "by-name" && hasThumb(it.kind), atWord: t(ASIDE[it.box].text.at), ov: it.kind != null ? ovHtml(it.identifier) : "" })));
+      const imageTiles = computed(() => data.images.map((im) => ({ raw: im, identifier: im.identifier, label: im.label, size: im.size || 0, time: im.lastModified || 0, token: imageThumbToken(im) })));
+      const otherTiles = computed(() => data.others.map((o) => ({ identifier: o.identifier, label: o.label, size: o.size || 0, time: o.lastModified || 0 })));
       const crumbs = computed(() => breadcrumb(folder.value));
       const isEmpty = computed(() => view.value !== "files" ? asideTiles.value.length === 0 : folderTiles.value.length === 0 && fileTiles.value.length === 0 && imageTiles.value.length === 0 && otherTiles.value.length === 0);
       const emptyText = computed(() => view.value !== "files" ? t(ASIDE[view.value].text.none) : folder.value ? t("gal.empty.folder", { f: folder.value }) : t("gal.empty.none"));
@@ -347,11 +343,11 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       };
 
       // ── 动词：core/verbs（红线兜底在那边）；这里只包 openMenu 收起 + reload ──
-      const verbs = createGalleryVerbs({ store: () => { const s = d.store(); if (!s) throw new Error("gallery: no library attached"); return s; }, host: d.host, doc: d.doc, naming, isZipDoc: d.isZipDoc, thumbs: d.thumbs, onEncryptionChanged: invalidateEncrypted, encryption: enc });
+      const verbs = createGalleryVerbs({ store: () => { const s = d.store(); if (!s) throw new Error("gallery: no library attached"); return s; }, host: d.host, doc: d.doc, thumbs: d.thumbs, onEncryptionChanged: invalidateEncrypted, encryption: enc });
       const wrap = <A extends unknown[]>(fn: (...a: A) => Promise<void>) => async (...a: A) => { openMenu.value = null; await fn(...a); await reload(); };
       const rename = wrap((item: GItem) => verbs.rename(item));
       const move = wrap((item: GItem) => verbs.move(item, { folder: folder.value, folderNames: data.folderNames }));
-      const copy = wrap((item: GItem) => verbs.copy(item, data.files.map((it) => it.name)));
+      const copy = wrap((item: GItem) => verbs.copy(item, data.files.map((it) => it.identifier)));
       const push = wrap((item: GItem) => verbs.push(item));
       const reupload = wrap((item: GItem) => verbs.reupload(item));
       const unload = wrap((item: GItem) => verbs.unload(item));
@@ -368,22 +364,24 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
 
       async function openTile(item: GItem) {
         openMenu.value = null;
-        if (item.name === d.host.activeName()) { await d.doc.open(item); return; }
+        if (item.identifier === d.host.activeIdentifier()) { await d.doc.open(item); return; }
         await d.doc.open(item); await reload();
       }
       function enterFolder(path: string) { setFolder(path); }
       async function openImageTile(img: CloudImageItem) {
         openMenu.value = null;
         if (!d.doc.importImageAsDoc) return;   // 宿主不支持图片转生 → 图片 tile 只显示
-        const twin = imageTwinBareName(folder.value, img.name);
-        const existing = data.files.find((it) => it.name === twin);
-        if (existing) { await d.doc.open(existing); return; }
         const st = d.store();
-        if (st && await st.files.nameOccupied(naming.full(twin))) { await d.doc.open({ name: twin, syncState: "cloud-only" } as GItem); return; }
+        const firstKind = st?.identifiers.kinds[0];
+        if (!st || !firstKind) return;   // 没有文档种类 → 图片没有孪生可开
+        const twin = imageTwinIdentifier(folder.value, img.label, firstKind.suffix);   // 图片转生成表里第一种文档
+        const existing = data.files.find((it) => it.identifier === twin);
+        if (existing) { await d.doc.open(existing); return; }
+        if (await st.files.occupied(twin)) { const dd = st.identifiers.parse(twin); await d.doc.open({ identifier: twin, stem: dd?.stem ?? twin, kind: dd?.kind ?? firstKind.kind, syncState: "cloud-only" }); return; }
         try {
-          const blob = await d.host.busy(t("cp.downloading", { name: img.name }), () => d.data.openCloudImage(img.path));
-          if (!blob) { d.host.status(t("cp.downloadFailed", { name: img.name }), true); return; }
-          await d.doc.importImageAsDoc(new File([blob], img.name, { type: mimeForImageName(img.name) }), { nameOverride: twin });
+          const blob = await d.host.busy(t("cp.downloading", { name: img.label }), () => d.data.openCloudImage(img.identifier));
+          if (!blob) { d.host.status(t("cp.downloadFailed", { name: img.label }), true); return; }
+          await d.doc.importImageAsDoc(new File([blob], img.label, { type: mimeForImageName(img.label) }), { nameOverride: twin });
         } catch (e: unknown) { d.host.status(t("cp.importFailed", { err: String((e as { message?: unknown })?.message || e) }), true); }
       }
 
@@ -401,7 +399,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       };
       const tileTall = d.tile?.aspect === "2/3";
       return {
-        tileTall, hasThumb, layout, setLayout: (l: "cards" | "list") => { layout.value = l; },
+        tileTall, layout, setLayout: (l: "cards" | "list") => { layout.value = l; },
         view, folder, loading, stalled, retry, openDiag, reloadApp, openMenu, isEmpty, emptyText, L, phHtml,
         folderTiles, fileTiles, imageTiles, otherTiles, asideTiles, crumbs,
         badgeIcon, fmtMeta, humanTime, fullTime, ICON, toggleMenu, menuUp, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
@@ -459,12 +457,12 @@ const GALLERY_TEMPLATE = `
             </div>
           </div>
 
-          <div v-for="row in fileTiles" :key="row.t.name" class="gallery-tile" :class="{ active: row.t.isActive }" @click="openTile(row.item)">
-            <ThumbCell :enc-name="row.t.encrypted && hasThumb(row.t.name) ? row.t.name : null" :fetchable="!row.t.encrypted && (row.t.hasCloud || row.t.hasLocal) && hasThumb(row.t.name)" :is-cloud="!row.t.hasLocal && row.t.hasCloud" :cloud-newer="row.t.cloudNewer" :thumb-token="String(row.t.time || row.t.size || 0)" :fallback="row.t.displayName.slice(0,1) || '?'" :fallback-html="phHtml(row.t.name)" :alt="row.t.name" @unlock="onUnlock" />
+          <div v-for="row in fileTiles" :key="row.t.identifier" class="gallery-tile" :class="{ active: row.t.isActive }" @click="openTile(row.item)">
+            <ThumbCell :enc-name="row.t.encrypted && row.thumb ? row.t.identifier : null" :fetchable="!row.t.encrypted && (row.t.hasCloud || row.t.hasLocal) && row.thumb" :is-cloud="!row.t.hasLocal && row.t.hasCloud" :cloud-newer="row.t.cloudNewer" :thumb-token="String(row.t.time || row.t.size || 0)" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="phHtml(row.t.identifier)" :alt="row.t.identifier" @unlock="onUnlock" />
             <span v-if="row.ov" class="gallery-tile-overlay" v-html="row.ov"></span>
             <div class="gallery-tile-name-row">
               <span v-if="row.t.isActive" class="gallery-tile-active-tag">{{ L.activeTag }}</span>
-              <div class="gallery-tile-name" :title="row.t.fullPath"><span v-if="row.marker==='unread'" class="gallery-marker unread" :title="L.unread"></span>{{ row.t.displayName }}</div>
+              <div class="gallery-tile-name" :title="row.t.identifier"><span v-if="row.marker==='unread'" class="gallery-marker unread" :title="L.unread"></span>{{ row.t.stem }}</div>
               <div v-if="row.sub" class="gallery-tile-sub" :title="row.sub">{{ row.sub }}</div>
               <div class="gallery-tile-meta">
                 <span v-if="row.t.encrypted" class="gallery-tile-state-icon enc" :title="L.encrypted" v-html="ICON.lock"></span>
@@ -472,8 +470,8 @@ const GALLERY_TEMPLATE = `
                 <span>{{ fmtMeta(row.t) }}</span>
               </div>
             </div>
-            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu(row.t.name)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
-            <div class="gallery-tile-menu-popup" :class="{ hidden: openMenu!==row.t.name, up: menuUp }" @click.stop>
+            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu(row.t.identifier)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
+            <div class="gallery-tile-menu-popup" :class="{ hidden: openMenu!==row.t.identifier, up: menuUp }" @click.stop>
               <template v-if="row.t.ghost">
                 <div class="gallery-menu-note">{{ L.divergedNote }}</div>
                 <button type="button" @click="rename(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#rename"/></svg><span>{{ L.renameKeep }}</span></button>
@@ -499,24 +497,24 @@ const GALLERY_TEMPLATE = `
             </div>
           </div>
 
-          <div v-for="im in imageTiles" :key="'I:'+im.path" class="gallery-tile image-file" @click="openImageTile(im.raw)">
-            <ImageThumbCell :path="im.path" :token="im.token" :fallback="im.name.slice(0,1) || '?'" :alt="im.name" />
+          <div v-for="im in imageTiles" :key="'I:'+im.identifier" class="gallery-tile image-file" @click="openImageTile(im.raw)">
+            <ImageThumbCell :identifier="im.identifier" :token="im.token" :fallback="im.label.slice(0,1) || '?'" :alt="im.label" />
             <div class="gallery-tile-name-row">
-              <div class="gallery-tile-name" :title="im.path">{{ im.name }}</div>
+              <div class="gallery-tile-name" :title="im.identifier">{{ im.label }}</div>
               <div class="gallery-tile-meta">
                 <span class="gallery-tile-state-icon" :title="L.imageFile" v-html="ICON.image"></span>
                 <span>{{ fmtMeta({ time: im.time, size: im.size }) }}</span>
               </div>
             </div>
-            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu('I:'+im.path)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
-            <div class="gallery-tile-menu-popup" :class="{ hidden: openMenu!=='I:'+im.path, up: menuUp }" @click.stop>
+            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu('I:'+im.identifier)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
+            <div class="gallery-tile-menu-popup" :class="{ hidden: openMenu!=='I:'+im.identifier, up: menuUp }" @click.stop>
               <button type="button" class="danger" @click="deleteImage(im.raw)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.toTrash }}</span></button>
             </div>
           </div>
-          <div v-for="ot in otherTiles" :key="'O:'+ot.path" class="gallery-tile other-file">
+          <div v-for="ot in otherTiles" :key="'O:'+ot.identifier" class="gallery-tile other-file">
             <div class="gallery-tile-thumb" v-html="ICON.file"></div>
             <div class="gallery-tile-name-row">
-              <div class="gallery-tile-name" :title="ot.path">{{ ot.name }}</div>
+              <div class="gallery-tile-name" :title="ot.identifier">{{ ot.label }}</div>
               <div class="gallery-tile-meta">
                 <span class="gallery-tile-state-icon" :title="L.otherFile" v-html="ICON.file"></span>
                 <span>{{ fmtMeta({ time: ot.time, size: ot.size }) }}</span>
@@ -526,11 +524,11 @@ const GALLERY_TEMPLATE = `
         </template>
 
         <template v-if="view!=='files' && !loading">
-          <div v-for="row in asideTiles" :key="row.t.key" class="gallery-tile aside" :class="'aside-' + row.item.kind">
-            <ThumbCell :fetchable="row.fetch" :is-cloud="row.fetch && row.item.side==='cloud'" thumb-token="0" :fallback="row.display.slice(0,1) || '?'" :fallback-html="phHtml(row.t.name)" :alt="row.t.name" />
+          <div v-for="row in asideTiles" :key="row.t.key" class="gallery-tile aside" :class="'aside-' + row.item.box">
+            <ThumbCell :fetchable="row.fetch" :is-cloud="row.fetch && row.item.side==='cloud'" thumb-token="0" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="row.item.kind != null ? phHtml(row.t.identifier) : ''" :alt="row.t.identifier" />
             <span v-if="row.ov" class="gallery-tile-overlay" v-html="row.ov"></span>
             <div class="gallery-tile-name-row">
-              <div class="gallery-tile-name" :title="row.t.name">{{ row.display }}</div>
+              <div class="gallery-tile-name" :title="row.t.identifier">{{ row.t.stem }}</div>
               <div class="gallery-tile-meta" :title="fullTime(row.t.at)">{{ row.t.source }} · {{ humanTime(row.t.at) }} {{ row.atWord }}</div>
             </div>
             <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu('A:'+row.t.key)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>

@@ -4,32 +4,32 @@ import { tileFor, breadcrumb, asideTileFor, humanSize } from "../src/core/model/
 import { naturalCompare } from "../src/core/model/natural-order.ts";
 
 describe("gallery-view-model · tileFor = store 9 态直映（0.4.0：不再派生 local/cloud/dirty 布尔）", () => {
-  const on = { signedIn: true, activeName: null };
+  const on = { signedIn: true, activeIdentifier: null };
   const badges = { "cloud-only": "cloudOnly", synced: "syncedBoth", unpushed: "dirtyBoth", "newer-on-cloud": "newerOnCloud", conflict: "conflictBoth", ghost: "ghost", pendingGone: "pendingGone", float: "float", "local-only": "localOnly" };
   it("9 态一一对应，零推导", () => {
     for (const [s, b] of Object.entries(badges)) eq(tileFor({ name: "a", syncState: s }, on).badge, b, s);
   });
   it("三谓词跟着 syncState：hasLocal / hasCloud / cloudNewer；ghost / pendingGone 旗", () => {
-    const t1 = tileFor({ name: "a", syncState: "synced" }, on); assert(t1.hasLocal && t1.hasCloud && !t1.cloudNewer);
-    const t2 = tileFor({ name: "a", syncState: "cloud-only" }, on); assert(!t2.hasLocal && t2.hasCloud);
-    const t3 = tileFor({ name: "a", syncState: "float" }, on); assert(t3.hasLocal && !t3.hasCloud);
-    const t4 = tileFor({ name: "a", syncState: "newer-on-cloud" }, on); assert(t4.cloudNewer);
-    const t5 = tileFor({ name: "a", syncState: "conflict" }, on); assert(t5.cloudNewer && t5.hasLocal && t5.hasCloud);
-    eq(tileFor({ name: "a", syncState: "ghost" }, on).ghost, true); eq(tileFor({ name: "a", syncState: "pendingGone" }, on).pendingGone, true);
-    eq(tileFor({ name: "a", syncState: "local-only" }, on).ghost, false);
-    assert(/moved or deleted/.test(tileFor({ name: "a", syncState: "ghost" }, on).badgeTitle), "ghost 标题说明 cloud-gone");
-    assert(/unsynced|never uploaded/i.test(tileFor({ name: "a", syncState: "float" }, on).badgeTitle));
+    const t1 = tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "synced" }, on); assert(t1.hasLocal && t1.hasCloud && !t1.cloudNewer);
+    const t2 = tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "cloud-only" }, on); assert(!t2.hasLocal && t2.hasCloud);
+    const t3 = tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "float" }, on); assert(t3.hasLocal && !t3.hasCloud);
+    const t4 = tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "newer-on-cloud" }, on); assert(t4.cloudNewer);
+    const t5 = tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "conflict" }, on); assert(t5.cloudNewer && t5.hasLocal && t5.hasCloud);
+    eq(tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "ghost" }, on).ghost, true); eq(tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "pendingGone" }, on).pendingGone, true);
+    eq(tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "local-only" }, on).ghost, false);
+    assert(/moved or deleted/.test(tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "ghost" }, on).badgeTitle), "ghost 标题说明 cloud-gone");
+    assert(/unsynced|never uploaded/i.test(tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "float" }, on).badgeTitle));
   });
   it("登出视角不在本包压扁（store 算 syncState 时已按 ListContext 处理）；只有 localOnly 的文案换成「本地」", () => {
-    eq(tileFor({ name: "a", syncState: "unpushed" }, { signedIn: false, activeName: null }).badge, "dirtyBoth");
-    const off = tileFor({ name: "a", syncState: "local-only" }, { signedIn: false, activeName: null });
-    eq(off.badge, "localOnly"); assert(off.badgeTitle !== tileFor({ name: "a", syncState: "local-only" }, on).badgeTitle, "登出文案不同");
+    eq(tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "unpushed" }, { signedIn: false, activeIdentifier: null }).badge, "dirtyBoth");
+    const off = tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "local-only" }, { signedIn: false, activeIdentifier: null });
+    eq(off.badge, "localOnly"); assert(off.badgeTitle !== tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "local-only" }, on).badgeTitle, "登出文案不同");
   });
-  it("displayName = basename，time/size 取 item 的 lastModified/size；isActive 配对当前活动名", () => {
-    const t = tileFor({ name: "f/sub/pic", syncState: "local-only", size: 10, lastModified: 100 }, on);
-    eq(t.displayName, "pic"); eq(t.fullPath, "f/sub/pic"); eq(t.time, 100); eq(t.size, 10); eq(t.syncState, "local-only");
-    eq(tileFor({ name: "a", syncState: "synced" }, { signedIn: true, activeName: "a" }).isActive, true);
-    eq(tileFor({ name: "a", syncState: "synced" }, { signedIn: true, activeName: "b" }).isActive, false);
+  it("stem / identifier 原样带出，time/size 取 item 的 lastModified/size；isActive 配对当前活动身份", () => {
+    const t = tileFor({ identifier: "f/sub/pic.ora", stem: "pic", kind: "painting", syncState: "local-only", size: 10, lastModified: 100 }, on);
+    eq(t.stem, "pic"); eq(t.identifier, "f/sub/pic.ora"); eq(t.kind, "painting"); eq(t.time, 100); eq(t.size, 10); eq(t.syncState, "local-only");
+    eq(tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "synced" }, { signedIn: true, activeIdentifier: "a.ora" }).isActive, true);
+    eq(tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: "synced" }, { signedIn: true, activeIdentifier: "b.ora" }).isActive, false);
   });
 });
 

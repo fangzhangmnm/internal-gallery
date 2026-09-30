@@ -22,12 +22,12 @@ import { downloadStamp } from "../naming.ts";   // 包内 core/naming.ts
 export const BACKUP_BUDGET_BYTES = 512 * 1024 * 1024;
 
 /** 清单里的一件（size 只是列举给的估值，可能缺；真预算用读到的字节算）。 */
-export interface BackupFileRef { path: string; size?: number; syncState?: string }   // syncState 原样透传（宿主判「备份前是否已缓存」→ 配额归还）
+export interface BackupFileRef { identifier: string; size?: number; syncState?: string }   // syncState 原样透传（宿主判「备份前是否已缓存」→ 配额归还）
 
 /** watchFolder 快照的**结构型**端口（刻意不 import 库类型：本模块零 store 依赖）。 */
 export interface WatchSnapshot {
-  path: string;
-  items: { path: string; size?: number; syncState?: string }[];
+  folder: string;
+  items: { identifier: string; size?: number; syncState?: string }[];
   folders: string[];
   complete: boolean;
   stale?: true;
@@ -36,15 +36,15 @@ export type WatchFolderFn = (folder: string, cb: (s: WatchSnapshot) => void) => 
 
 /** 一夹的一次性快照结果。authoritative:false = 这夹没拿到权威帧（离线/未登录/列举失败），清单可能缺项。 */
 export interface FolderProbe {
-  path: string;
+  folder: string;
   files: BackupFileRef[];
   folders: string[];
   authoritative: boolean;
 }
 
 const toProbe = (folder: string, snap: WatchSnapshot | null): FolderProbe => ({
-  path: folder,
-  files: (snap?.items ?? []).map((it) => ({ path: it.path, size: it.size, syncState: it.syncState })),
+  folder,
+  files: (snap?.items ?? []).map((it) => ({ identifier: it.identifier, size: it.size, syncState: it.syncState })),
   folders: snap?.folders ?? [],
   authoritative: snap?.complete === true && snap.stale !== true,
 });
@@ -88,7 +88,7 @@ export function snapshotFolderOnce(
     armSettle();
     unsub = watch(folder, (snap) => {
       if (settled) return;
-      if (snap.path !== folder) return;   // 库内已有同款守卫；这里再挡一次，绝不把别夹内容算进本夹
+      if (snap.folder !== folder) return;   // 库内已有同款守卫；这里再挡一次，绝不把别夹内容算进本夹
       last = snap;
       frames++;
       if (snap.complete && snap.stale !== true) { finish(); return; }
@@ -125,10 +125,10 @@ export async function walkLibrary(
     visited++;
     opts.onFolder?.(folder, visited);
     if (!p.authoritative) partialFolders.push(folder);
-    for (const f of p.files) if (!byPath.has(f.path)) byPath.set(f.path, f);
+    for (const f of p.files) if (!byPath.has(f.identifier)) byPath.set(f.identifier, f);
     for (const sub of p.folders) if (!seen.has(sub)) { seen.add(sub); queue.push(sub); }
   }
-  const files = [...byPath.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const files = [...byPath.values()].sort((a, b) => (a.identifier < b.identifier ? -1 : a.identifier > b.identifier ? 1 : 0));
   return { files, partialFolders, foldersVisited: visited, truncated };
 }
 
@@ -195,7 +195,7 @@ export async function runLibraryBackup(
   const spilledNames: string[] = [];
   let bytes = 0;
   for (let i = 0; i < files.length; i++) {
-    const path = files[i].path;
+    const path = files[i].identifier;   // zip 里的条目路径 = 身份（文件夹保留）
     ports.onProgress?.(i, files.length, path);
     let blob: Blob | null = null;
     try { blob = await ports.readBytes(path); }

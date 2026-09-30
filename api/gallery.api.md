@@ -4,6 +4,7 @@
 
 ```ts
 
+import { Identifiers } from '@internal/store';
 import { Item } from '@internal/store';
 import type { NoticeHandle } from '@internal/workbench-elements';
 import type { NoticeOpts } from '@internal/workbench-elements';
@@ -31,18 +32,19 @@ export interface AsideEmptyResult {
 // @public
 export interface AsideItem {
     at: number;
+    box: AsideKind;
     // (undocumented)
     cloudRef: string | null;
     conflictLive: boolean;
     encrypted: boolean;
+    identifier: string;
     key: string;
-    // (undocumented)
-    kind: AsideKind;
+    kind: string | null;
     // (undocumented)
     localKey: string | null;
-    name: string;
     // (undocumented)
     side: "local" | "cloud" | "both";
+    stem: string;
 }
 
 // @public (undocumented)
@@ -56,11 +58,13 @@ export interface AsideTile {
     // (undocumented)
     at: number;
     // (undocumented)
+    identifier: string;
+    // (undocumented)
     key: string;
     // (undocumented)
-    name: string;
-    // (undocumented)
     source: string;
+    // (undocumented)
+    stem: string;
 }
 
 // @public (undocumented)
@@ -104,7 +108,7 @@ export const backupArchiveName: (now?: Date) => string;
 // @public
 export interface BackupFileRef {
     // (undocumented)
-    path: string;
+    identifier: string;
     // (undocumented)
     size?: number;
     // (undocumented)
@@ -247,15 +251,13 @@ export interface ChangePasswordPorts {
     // (undocumented)
     hasVerifier(): boolean;
     // (undocumented)
-    invalidateEncrypted(bareName: string): void;
+    invalidateEncrypted(identifier: string): void;
     // (undocumented)
-    invalidateThumb(bareName: string): Promise<void>;
+    invalidateThumb(identifier: string): Promise<void>;
     // (undocumented)
     isCached(syncState: string): boolean;
     // (undocumented)
     isOnline(): boolean;
-    // (undocumented)
-    naming?: NameBoundary;
     // (undocumented)
     promptPassword(o: {
         title: string;
@@ -337,23 +339,23 @@ export interface CloudImageItem {
     // (undocumented)
     cached: boolean;
     // (undocumented)
+    identifier: string;
+    // (undocumented)
+    label: string;
+    // (undocumented)
     lastModified?: number;
-    // (undocumented)
-    name: string;
-    // (undocumented)
-    path: string;
     // (undocumented)
     size?: number;
 }
 
-// @public (undocumented)
+// @public
 export interface CloudOtherItem {
     // (undocumented)
+    identifier: string;
+    // (undocumented)
+    label: string;
+    // (undocumented)
     lastModified?: number;
-    // (undocumented)
-    name: string;
-    // (undocumented)
-    path: string;
     // (undocumented)
     size?: number;
 }
@@ -368,7 +370,7 @@ export function configureText(opts: {
 }): void;
 
 // @public (undocumented)
-export function copyTargetName(sourceName: string, taken: (name: string) => boolean): string;
+export function copyTargetName(source: string, taken: (identifier: string) => boolean, ids: Identifiers): string;
 
 // @public (undocumented)
 export function crc32(bytes: Uint8Array, from?: number, to?: number): number;
@@ -419,12 +421,12 @@ export function createGalleryDataFace(deps: {
         onError?: (err: unknown, phase: WatchFolderErrorPhase) => void;
     }): () => void;
     watchFolderImages(folder: string, cb: (snap: {
-        path: string;
+        folder: string;
         images: CloudImageItem[];
         folderNames: string[];
     }) => void): () => void;
-    openCloudImage: (path: string) => Promise<Blob | null>;
-    listAside: (kind: AsideKind) => Promise<AsideItem[]>;
+    openCloudImage: (identifier: string) => Promise<Blob | null>;
+    listAside: (box: AsideKind) => Promise<AsideItem[]>;
 };
 
 // @public (undocumented)
@@ -433,13 +435,12 @@ export interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thu
     deviceKv?: DeviceKv;
     // (undocumented)
     policy: DataFacePolicy & {
-        naming?: NameBoundary;
         thumbs?: {
-            fetch: (name: string, source: ThumbSource) => Promise<Blob | null>;
+            kinds: readonly string[];
+            fetch: (identifier: string, source: ThumbSource) => Promise<Blob | null>;
             store?: ThumbStore;
             dbName?: string;
-            galleryId?: () => string; /** 0.2.1：哪些文档有缩略图可取（WXHW：只有书）。 */
-            has?: (fullName: string) => boolean;
+            galleryId?: () => string;
         };
     };
     // (undocumented)
@@ -465,15 +466,15 @@ export function createGalleryVerbs(d: VerbDeps): {
         folder: string;
         folderNames: string[];
     }) => string[];
-    copy: (item: GItem, currentNames: readonly string[]) => Promise<void>;
+    copy: (item: GItem, currentIdentifiers: readonly string[]) => Promise<void>;
     push: (item: GItem) => Promise<void>;
     unload: (item: GItem) => Promise<void>;
     keepOffline: (item: GItem) => Promise<void>;
     reupload: (item: GItem) => Promise<void>;
     del: (item: GItem) => Promise<void>;
     deleteImage: (img: {
-        path: string;
-        name: string;
+        identifier: string;
+        label: string;
     }) => Promise<void>;
     folderDelete: (ft: {
         name: string;
@@ -506,19 +507,13 @@ export interface Crumb {
 
 // @public (undocumented)
 export interface DataFacePolicy {
-    // (undocumented)
-    isDoc?: (path: string) => boolean;
-    // (undocumented)
-    isImage?: (path: string) => boolean;
-    // (undocumented)
-    naming?: NameBoundary;
+    isImage?: (identifier: string) => boolean;
 }
 
 // @public
 export interface DataFaceStore {
     // (undocumented)
-    file(name: string, opts: {
-        isZip: false;
+    file(identifier: string, opts: {
         mode: "existing";
     }): {
         open(): Promise<Blob | null>;
@@ -526,7 +521,7 @@ export interface DataFaceStore {
     // (undocumented)
     files: {
         watchFolder(folder: string, cb: (snap: {
-            path: string;
+            folder: string;
             items: Item[];
             folders: string[];
             complete: boolean;
@@ -536,6 +531,8 @@ export interface DataFaceStore {
         listTrash(): Promise<TrashItem[]>;
         listBackup(): Promise<TrashItem[]>;
     };
+    // (undocumented)
+    identifiers: Identifiers;
 }
 
 // @public
@@ -654,9 +651,9 @@ export interface FolderProbe {
     // (undocumented)
     files: BackupFileRef[];
     // (undocumented)
-    folders: string[];
+    folder: string;
     // (undocumented)
-    path: string;
+    folders: string[];
 }
 
 // @public (undocumented)
@@ -2326,7 +2323,7 @@ export interface GalleryItem {
 }
 
 // @public
-export function galleryItemFromStoreItem(it: Item, naming?: NameBoundary): GItem;
+export function galleryItemFromStoreItem(it: Item, ids: Identifiers): GItem | null;
 
 // @public (undocumented)
 export type GalleryKind = "onedrive" | "folder";
@@ -2391,7 +2388,6 @@ export interface GalleryScreenDeps {
         get(): string;
         set(p: string): void;
     };
-    hasThumb?: (fullName: string) => boolean;
     // (undocumented)
     host: VerbHost;
     // (undocumented)
@@ -2400,10 +2396,6 @@ export interface GalleryScreenDeps {
     };
     isGalleryVisible?: () => boolean;
     // (undocumented)
-    isZipDoc?: (fullName: string) => boolean;
-    // (undocumented)
-    naming?: NameBoundary;
-    // (undocumented)
     openDiag?: () => void;
     // (undocumented)
     reloadApp?: () => void;
@@ -2411,6 +2403,7 @@ export interface GalleryScreenDeps {
     reportError: (err: unknown, level?: "error" | "warning" | "info" | "log") => void;
     // (undocumented)
     store: () => VerbStore | null;
+    thumbKinds?: readonly string[];
     // (undocumented)
     thumbs?: ThumbCache;
     tile?: {
@@ -2435,6 +2428,8 @@ export interface GalleryScreenDeps {
 // @public (undocumented)
 export interface GallerySnapshot {
     // (undocumented)
+    folder: string;
+    // (undocumented)
     folderNames: string[];
     // (undocumented)
     images: CloudImageItem[];
@@ -2442,8 +2437,6 @@ export interface GallerySnapshot {
     items: GItem[];
     // (undocumented)
     others: CloudOtherItem[];
-    // (undocumented)
-    path: string;
 }
 
 // @public (undocumented)
@@ -2464,11 +2457,7 @@ export interface GalleryTile {
     // (undocumented)
     cloudNewer: boolean;
     // (undocumented)
-    displayName: string;
-    // (undocumented)
     encrypted: boolean;
-    // (undocumented)
-    fullPath: string;
     // (undocumented)
     ghost: boolean;
     // (undocumented)
@@ -2476,13 +2465,17 @@ export interface GalleryTile {
     // (undocumented)
     hasLocal: boolean;
     // (undocumented)
+    identifier: string;
+    // (undocumented)
     isActive: boolean;
     // (undocumented)
-    name: string;
+    kind: string;
     // (undocumented)
     pendingGone: boolean;
     // (undocumented)
     size: number;
+    // (undocumented)
+    stem: string;
     // (undocumented)
     syncState: SyncState;
     // (undocumented)
@@ -2498,11 +2491,15 @@ export type GalleryView = "files" | AsideKind;
 // @public
 export interface GItem {
     // (undocumented)
+    identifier: string;
+    // (undocumented)
+    kind: string;
+    // (undocumented)
     lastModified?: number;
     // (undocumented)
-    name: string;
-    // (undocumented)
     size?: number;
+    // (undocumented)
+    stem: string;
     // (undocumented)
     syncState: SyncState;
 }
@@ -2560,16 +2557,13 @@ export function imageThumbToken(it: {
 }): string;
 
 // @public
-export const imageTwinBareName: (folder: string, basename: string) => string;
+export const imageTwinIdentifier: (folder: string, basename: string, docSuffix: string) => string;
 
 // @public
 function initDiagLog(opts?: {
     app?: string;
     version?: string;
 }): void;
-
-// @public (undocumented)
-export const isDocPath: (p: string) => boolean;
 
 // @public (undocumented)
 export const isImagePath: (p: string) => boolean;
@@ -2624,16 +2618,6 @@ export function mimeForImageName(name: string): string;
 
 // @public (undocumented)
 export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): GalleryHandle;
-
-// @public
-export interface NameBoundary {
-    // (undocumented)
-    bare: (s: string) => string;
-    // (undocumented)
-    display?: (bare: string) => string;
-    // (undocumented)
-    full: (bare: string) => string;
-}
 
 // @public (undocumented)
 export function naturalCompare(a: string, b: string): number;
@@ -2806,13 +2790,12 @@ export interface StoreUIDeps {
     // (undocumented)
     busy: <T>(label: string, fn: () => Promise<T>) => Promise<T>;
     // (undocumented)
-    naming?: NameBoundary;
-    // (undocumented)
     reportError: (err: unknown, level?: "error" | "warning" | "info" | "log") => void;
     // (undocumented)
     sheets: SyncGateSheets;
     // (undocumented)
     showNotice: (opts: NoticeOpts) => NoticeHandle;
+    stemOf?: (identifier: string) => string;
     text?: (key: StoreTextKey, params?: StoreTextParams) => string | undefined;
 }
 
@@ -2948,7 +2931,7 @@ export function thumbTargetSize(w: number, h: number, max: number): {
 // @public (undocumented)
 export function tileFor(item: GItem, opts: {
     signedIn: boolean;
-    activeName: string | null;
+    activeIdentifier: string | null;
     encrypted?: boolean;
 }): GalleryTile;
 
@@ -2956,7 +2939,7 @@ export function tileFor(item: GItem, opts: {
 function toText(): string;
 
 // @public (undocumented)
-export function uniqueBareName(stem: string, occupied: (fullName: string) => Promise<unknown>, naming?: NameBoundary): Promise<string>;
+export function uniqueIdentifier(identifier: string, occupied: (identifier: string) => Promise<unknown>, ids: Identifiers): Promise<string>;
 
 // @public (undocumented)
 export interface VerbDeps {
@@ -2966,31 +2949,26 @@ export interface VerbDeps {
     encryption?: VerbEncryption;
     // (undocumented)
     host: VerbHost;
-    isZipDoc?: (fullName: string) => boolean;
     // (undocumented)
-    naming?: NameBoundary;
-    // (undocumented)
-    onEncryptionChanged?: (name: string) => void;
+    onEncryptionChanged?: (identifier: string) => void;
     // (undocumented)
     store: () => VerbStore;
     // (undocumented)
     thumbs?: {
-        invalidate(name: string): Promise<void> | void;
+        invalidate(identifier: string): Promise<void> | void;
     };
 }
 
 // @public
 export interface VerbDoc {
     // (undocumented)
-    dropCheckpoint(name: string): Promise<void> | void;
+    dropCheckpoint(identifier: string): Promise<void> | void;
     // (undocumented)
     exit(): Promise<void>;
     // (undocumented)
     push(item: GItem): Promise<void>;
-    // (undocumented)
     renameActive(): Promise<string | null>;
-    // (undocumented)
-    setName(name: string): void;
+    setIdentifier(identifier: string): void;
     // (undocumented)
     unload(item: GItem): Promise<void>;
 }
@@ -3054,8 +3032,7 @@ export interface VerbFile {
 
 // @public (undocumented)
 export interface VerbHost {
-    // (undocumented)
-    activeName(): string | null;
+    activeIdentifier(): string | null;
     // (undocumented)
     busy<T>(label: string, fn: () => Promise<T>): Promise<T>;
     // (undocumented)
@@ -3080,13 +3057,12 @@ export interface VerbHost {
 // @public (undocumented)
 export interface VerbStore {
     // (undocumented)
-    file(name: string, opts: {
-        isZip: boolean;
+    file(identifier: string, opts: {
         mode: "new" | "existing";
     }): VerbFile;
     // (undocumented)
     files: {
-        nameOccupied(name: string): Promise<unknown>;
+        occupied(identifier: string): Promise<unknown>;
         deleteFolder(path: string): Promise<unknown>;
         restoreTrash(o: {
             trashKey: string | null;
@@ -3108,6 +3084,8 @@ export interface VerbStore {
             scope: AsideScope;
         }): Promise<AsideEmptyResult>;
     };
+    // (undocumented)
+    identifiers: Identifiers;
 }
 
 // @public
@@ -3162,15 +3140,15 @@ export interface WatchSnapshot {
     // (undocumented)
     complete: boolean;
     // (undocumented)
+    folder: string;
+    // (undocumented)
     folders: string[];
     // (undocumented)
     items: {
-        path: string;
+        identifier: string;
         size?: number;
         syncState?: string;
     }[];
-    // (undocumented)
-    path: string;
     // (undocumented)
     stale?: true;
 }

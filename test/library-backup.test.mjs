@@ -30,8 +30,8 @@ function fakeWatch(script, log = {}) {
     return () => { dead = true; log.unsubscribed.push(folder || "<root>"); };
   };
 }
-const frame = (path, names, folders = [], complete = true, extra = {}) =>
-  ({ path, items: names.map((n) => ({ path: n, size: 10 })), folders, complete, ...extra });
+const frame = (folder, names, folders = [], complete = true, extra = {}) =>
+  ({ folder, items: names.map((n) => ({ identifier: n, size: 10 })), folders, complete, ...extra });
 
 describe("library-backup · 订阅 → 一次性快照（snapshotFolderOnce）", () => {
   it("收到权威帧（complete）立刻返回并退订", async () => {
@@ -47,7 +47,7 @@ describe("library-backup · 订阅 → 一次性快照（snapshotFolderOnce）",
     const watch = fakeWatch({ "": [frame("", ["a.ora"], [], false), frame("", ["a.ora", "b.ora"], ["f"], false)] });
     const p = await snapshotFolderOnce(watch, "", { settleMs: 5000, timeoutMs: 8000 });
     eq(p.authoritative, false);
-    eq(p.files.map((f) => f.path).join(","), "a.ora,b.ora", "用的是第二帧（更全）");
+    eq(p.files.map((f) => f.identifier).join(","), "a.ora,b.ora", "用的是第二帧（更全）");
   });
   it("stale 帧（dir-index-cache 冷首帧）即使 complete 也不算权威", async () => {
     const watch = fakeWatch({ "": [frame("", ["a.ora"], [], true, { stale: true })] });
@@ -58,7 +58,7 @@ describe("library-backup · 订阅 → 一次性快照（snapshotFolderOnce）",
   it("别夹的帧被丢弃（绝不把别夹内容算进本夹）", async () => {
     const watch = fakeWatch({ "x": [frame("y", ["wrong.ora"], [], true), frame("x", ["right.ora"], [], true)] });
     const p = await snapshotFolderOnce(watch, "x", { settleMs: 200, timeoutMs: 2000 });
-    eq(p.files.map((f) => f.path).join(","), "right.ora");
+    eq(p.files.map((f) => f.identifier).join(","), "right.ora");
   });
   it("一帧都没有 → settle 兜底返回空清单 + authoritative:false（不吊死）", async () => {
     const watch = fakeWatch({});
@@ -78,8 +78,8 @@ describe("library-backup · 订阅 → 一次性快照（snapshotFolderOnce）",
 
 const probeOf = (tree) => async (folder) => {
   const n = tree[folder];
-  if (!n) return { path: folder, files: [], folders: [], authoritative: false };
-  return { path: folder, files: (n.files ?? []).map((p) => ({ path: p })), folders: n.folders ?? [], authoritative: n.authoritative !== false };
+  if (!n) return { folder, files: [], folders: [], authoritative: false };
+  return { folder, files: (n.files ?? []).map((p) => ({ identifier: p })), folders: n.folders ?? [], authoritative: n.authoritative !== false };
 };
 
 describe("library-backup · 递归全库清单（walkLibrary）", () => {
@@ -91,7 +91,7 @@ describe("library-backup · 递归全库清单（walkLibrary）", () => {
       "练习/深": { files: ["练习/深/z.ora"], folders: [] },
       "空夹": { files: [], folders: [] },
     }), { onFolder: (f) => files.push(f) });
-    eq(m.files.map((f) => f.path).join("|"), "a.ora|b.ora|练习/x.ora|练习/y.png|练习/深/z.ora");
+    eq(m.files.map((f) => f.identifier).join("|"), "a.ora|b.ora|练习/x.ora|练习/y.png|练习/深/z.ora");
     eq(m.foldersVisited, 4);
     eq(m.truncated, false);
     eq(m.partialFolders.length, 0);
@@ -101,9 +101,9 @@ describe("library-backup · 递归全库清单（walkLibrary）", () => {
     const visited = [];
     await walkLibrary(async (folder) => {
       visited.push(folder);
-      if (folder === "") return { path: "", files: [], folders: ["a", "a"], authoritative: true };
-      if (folder === "a") return { path: "a", files: [], folders: [""], authoritative: true };
-      return { path: folder, files: [], folders: [], authoritative: true };
+      if (folder === "") return { folder: "", files: [], folders: ["a", "a"], authoritative: true };
+      if (folder === "a") return { folder: "a", files: [], folders: [""], authoritative: true };
+      return { folder, files: [], folders: [], authoritative: true };
     });
     eq(visited.join(","), ",a", "根和 a 各一次，环不再走");
   });
@@ -117,7 +117,7 @@ describe("library-backup · 递归全库清单（walkLibrary）", () => {
   });
   it("maxFolders 上限截断 → truncated:true（病态深树不放飞）", async () => {
     const m = await walkLibrary(async (folder) => ({
-      path: folder, files: [`${folder}f.ora`], folders: [`${folder}s`], authoritative: true,
+      folder, files: [`${folder}f.ora`], folders: [`${folder}s`], authoritative: true,
     }), { maxFolders: 3 });
     eq(m.foldersVisited, 3);
     eq(m.truncated, true);
@@ -159,7 +159,7 @@ describe("library-backup · 编排（runLibraryBackup）", () => {
 
   it("全部进包：pack 一次、deliver 一次、包名 = weebpaint-backup-YYYYMMDD-HHMM.zip", async () => {
     const h = mkPorts(() => blobOf(10));
-    const r = await runLibraryBackup([{ path: "a.ora" }, { path: "练习/b.ora" }], h.ports, { budget: 1000, now: AT });
+    const r = await runLibraryBackup([{ identifier: "a.ora" }, { identifier: "练习/b.ora" }], h.ports, { budget: 1000, now: AT });
     eq(r.zipped, 2); eq(r.spilled, 0); eq(r.failed.length, 0); eq(r.bytes, 20);
     eq(r.overBudget, false);
     eq(r.archiveName, "weebpaint-backup-20260828-1403.zip");
@@ -172,7 +172,7 @@ describe("library-backup · 编排（runLibraryBackup）", () => {
   it("超预算 → 前面进包、其余逐件下载（落地名压平路径保住来源夹）", async () => {
     const h = mkPorts(() => blobOf(40));
     const r = await runLibraryBackup(
-      [{ path: "a.ora" }, { path: "练习/b.ora" }, { path: "练习/c.ora" }],
+      [{ identifier: "a.ora" }, { identifier: "练习/b.ora" }, { identifier: "练习/c.ora" }],
       h.ports, { budget: 50, now: AT },
     );
     eq(r.zipped, 1); eq(r.spilled, 2); eq(r.overBudget, true);
@@ -182,7 +182,7 @@ describe("library-backup · 编排（runLibraryBackup）", () => {
 
   it("全部溢出 → 不打包（archiveName=null），只逐件下载", async () => {
     const h = mkPorts(() => blobOf(40));
-    const r = await runLibraryBackup([{ path: "a.ora" }, { path: "b.ora" }], h.ports, { budget: 0, now: AT });
+    const r = await runLibraryBackup([{ identifier: "a.ora" }, { identifier: "b.ora" }], h.ports, { budget: 0, now: AT });
     eq(r.zipped, 0); eq(r.spilled, 2); eq(r.archiveName, null);
     eq(h.packed.length, 0, "空包不打");
     eq(h.delivered.map((d) => d.filename).join("|"), "a.ora|b.ora");
@@ -195,7 +195,7 @@ describe("library-backup · 编排（runLibraryBackup）", () => {
       return blobOf(10);
     });
     const r = await runLibraryBackup(
-      [{ path: "a.ora" }, { path: "gone.ora" }, { path: "boom.ora" }, { path: "z.ora" }],
+      [{ identifier: "a.ora" }, { identifier: "gone.ora" }, { identifier: "boom.ora" }, { identifier: "z.ora" }],
       h.ports, { budget: 1000, now: AT },
     );
     eq(r.total, 4); eq(r.zipped, 2);
@@ -214,13 +214,13 @@ describe("library-backup · 编排（runLibraryBackup）", () => {
   it("进度回调逐件报（done 从 0 起、total 恒为清单长度）", async () => {
     const h = mkPorts(() => blobOf(1));
     const seen = [];
-    await runLibraryBackup([{ path: "a" }, { path: "b" }], { ...h.ports, onProgress: (d, tt, p) => seen.push(`${d}/${tt}:${p}`) }, { now: AT });
+    await runLibraryBackup([{ identifier: "a" }, { identifier: "b" }], { ...h.ports, onProgress: (d, tt, p) => seen.push(`${d}/${tt}:${p}`) }, { now: AT });
     eq(seen.join(","), "0/2:a,1/2:b");
   });
 
   it("只读：端口面里没有任何写口 —— 备份全程只调 readBytes", async () => {
     const called = [];
-    await runLibraryBackup([{ path: "a.ora" }], {
+    await runLibraryBackup([{ identifier: "a.ora" }], {
       readBytes: async (p) => { called.push(`read:${p}`); return blobOf(1); },
       pack: async () => { called.push("pack"); return blobOf(1); },
       deliver: () => called.push("deliver"),
@@ -234,7 +234,7 @@ describe("library-backup · 接真 zipPack（备份包必须是能解开的真�
     const enc = new TextEncoder(), dec = new TextDecoder();
     const delivered = [];
     const r = await runLibraryBackup(
-      [{ path: "a.ora" }, { path: "练习/夏音.ora" }],
+      [{ identifier: "a.ora" }, { identifier: "练习/夏音.ora" }],
       {
         readBytes: async (p) => new Blob([enc.encode("BYTES:" + p)]),
         pack: (entries) => zipPack(entries, { lastModDate: AT }),
@@ -273,7 +273,7 @@ describe("library-backup · 透明账（0828 user：溢出必须说明是哪些�
     const mk = (n) => new Blob([new Uint8Array(n)]);
     const delivered = [];
     const r = await runLibraryBackup(
-      [{ path: "a.ora" }, { path: "big.ora" }, { path: "b.ora" }],
+      [{ identifier: "a.ora" }, { identifier: "big.ora" }, { identifier: "b.ora" }],
       {
         readBytes: async (p) => (p === "big.ora" ? mk(100) : mk(10)),
         pack: async (entries) => { delivered.push(["zip", entries.map((e) => e.path)]); return mk(1); },

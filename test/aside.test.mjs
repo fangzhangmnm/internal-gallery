@@ -4,8 +4,10 @@ import { ASIDE, asideTime, asideItemFrom, sortAside } from "../src/core/model/as
 import { createGalleryDataFace } from "../src/core/data-face.ts";
 import { GALLERY_TEXT } from "../src/core/text.ts";
 import { naturalCompare } from "../src/core/model/natural-order.ts";
+import { createIdentifiers } from "@internal/store";
 
-const raw = (name, ts, extra = {}) => ({ name, ts, side: "local", encrypted: false, conflictLive: false, localKey: `backup/${ts}-aaaa:${name}`, cloudRef: null, ...extra });
+const IDS = createIdentifiers([{ kind: "painting", suffix: ".ora", container: "zip" }, { kind: "draft", suffix: ".txt", container: "raw" }]);
+const raw = (identifier, ts, extra = {}) => ({ identifier, ts, side: "local", encrypted: false, conflictLive: false, localKey: `backup/${ts}-aaaa:${identifier}`, cloudRef: null, ...extra });
 
 describe("aside · asideTime（store 的 yyyymmddhhmmss 戳 → ms）", () => {
   it("合法戳按本机时区读", () => {
@@ -18,23 +20,25 @@ describe("aside · asideTime（store 的 yyyymmddhhmmss 戳 → ms）", () => {
 
 describe("aside · asideItemFrom / sortAside", () => {
   it("同名的两条留底 key 不同（列表渲染和菜单开合靠它，撞了就串）", () => {
-    const a = asideItemFrom("backup", raw("稿.txt", "20260929100000"), (s) => s);
-    const b = asideItemFrom("backup", raw("稿.txt", "20260929110000"), (s) => s);
+    const a = asideItemFrom("backup", raw("稿.txt", "20260929100000"), IDS);
+    const b = asideItemFrom("backup", raw("稿.txt", "20260929110000"), IDS);
     assert(a.key !== b.key, `${a.key} vs ${b.key}`);
-    eq(a.name, b.name);
+    eq(a.identifier, b.identifier); eq(a.stem, "稿"); eq(a.kind, "draft");
   });
-  it("同一条记录在回收站和备份箱里 key 也不同；kind 写在 item 上", () => {
+  it("同一条记录在回收站和备份箱里 key 也不同；box 写在 item 上（kind 是文档种类，两者分开）", () => {
     const r = raw("稿.txt", "20260929100000");
-    const a = asideItemFrom("trash", r, (s) => s), b = asideItemFrom("backup", r, (s) => s);
-    eq(a.kind, "trash"); eq(b.kind, "backup"); assert(a.key !== b.key);
+    const a = asideItemFrom("trash", r, IDS), b = asideItemFrom("backup", r, IDS);
+    eq(a.box, "trash"); eq(b.box, "backup"); assert(a.key !== b.key); eq(a.kind, "draft");
   });
-  it("裸名边界、两把钥匙、加密旗原样带出", () => {
-    const it2 = asideItemFrom("backup", raw("夹/猫.ora", "20260929100000", { side: "both", cloudRef: "C1", encrypted: true }), (s) => s.replace(/\.ora$/, ""));
-    eq(it2.name, "夹/猫"); eq(it2.localKey, "backup/20260929100000-aaaa:夹/猫.ora"); eq(it2.cloudRef, "C1"); eq(it2.encrypted, true); eq(it2.side, "both");
+  it("身份、主干、两把钥匙、加密旗原样带出；不是文档（被删的图片）→ stem = 最后一段、kind = null", () => {
+    const it2 = asideItemFrom("backup", raw("夹/猫.ora", "20260929100000", { side: "both", cloudRef: "C1", encrypted: true }), IDS);
+    eq(it2.identifier, "夹/猫.ora"); eq(it2.stem, "猫"); eq(it2.kind, "painting"); eq(it2.localKey, "backup/20260929100000-aaaa:夹/猫.ora"); eq(it2.cloudRef, "C1"); eq(it2.encrypted, true); eq(it2.side, "both");
+    const pic = asideItemFrom("trash", raw("夹/pic.png", "20260929100000"), IDS);
+    eq(pic.stem, "pic.png"); eq(pic.kind, null);
   });
   it("排序：新的在前；没有时间的沉底；同刻按名字自然序", () => {
-    const rows = [raw("b", null), raw("a10", "20260101000000"), raw("a2", "20260101000000"), raw("z", "20260929000000")].map((r) => asideItemFrom("backup", r, (s) => s));
-    eq(sortAside(rows, naturalCompare).map((r) => r.name).join("|"), "z|a2|a10|b");
+    const rows = [raw("b", null), raw("a10", "20260101000000"), raw("a2", "20260101000000"), raw("z", "20260929000000")].map((r) => asideItemFrom("backup", r, IDS));
+    eq(sortAside(rows, naturalCompare).map((r) => r.identifier).join("|"), "z|a2|a10|b");
   });
 });
 
@@ -65,22 +69,22 @@ describe("aside · 差异表 ASIDE", () => {
 });
 
 describe("data-face · listAside（列表只来自 store）", () => {
-  const store = { files: { watchFolder: () => () => {},
+  const store = { identifiers: IDS, files: { watchFolder: () => () => {},
     listTrash: async () => [raw("删掉的.ora", "20260901080000", { localKey: "trash/20260901080000-bbbb:删掉的.ora" })],
     listBackup: async () => [raw("稿.ora", "20260929100000"), raw("稿.ora", "20260929113000"), raw("别的.ora", null, { side: "cloud", localKey: null, cloudRef: "C9" })] },
     file: () => ({ open: async () => null }) };
-  const face = createGalleryDataFace({ store: () => store, policy: { naming: { bare: (s) => s.replace(/\.ora$/, ""), full: (b) => `${b}.ora` } } });
+  const face = createGalleryDataFace({ store: () => store });
   it("backup：读 listBackup，新的在前，同名两条都在、key 各异、时间解析出来", async () => {
     const rows = await face.listAside("backup");
-    eq(rows.map((r) => r.name).join("|"), "稿|稿|别的");
+    eq(rows.map((r) => r.stem).join("|"), "稿|稿|别的"); eq(rows[0].identifier, "稿.ora");
     eq(rows[0].at, new Date(2026, 8, 29, 11, 30, 0).getTime()); eq(rows[1].at, new Date(2026, 8, 29, 10, 0, 0).getTime()); eq(rows[2].at, 0);
     eq(new Set(rows.map((r) => r.key)).size, 3);
-    assert(rows.every((r) => r.kind === "backup"));
+    assert(rows.every((r) => r.box === "backup" && r.kind === "painting"));
     eq(rows[2].cloudRef, "C9"); eq(rows[2].localKey, null);
   });
   it("trash：读 listTrash；时间不再恒为 0（0.4.x 的回收站永远显示未知时间）", async () => {
     const rows = await face.listAside("trash");
-    eq(rows.length, 1); eq(rows[0].kind, "trash"); eq(rows[0].name, "删掉的");
+    eq(rows.length, 1); eq(rows[0].box, "trash"); eq(rows[0].stem, "删掉的"); eq(rows[0].identifier, "删掉的.ora");
     eq(rows[0].at, new Date(2026, 8, 1, 8, 0, 0).getTime());
   });
   it("无库 → 抛（界面自己在无库时不调）", async () => {

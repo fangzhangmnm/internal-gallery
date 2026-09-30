@@ -4,7 +4,6 @@
 import { snapshotFolderOnce, walkLibrary, runLibraryBackup, BACKUP_BUDGET_BYTES, type WatchFolderFn } from "../core/backup/library-backup.ts";
 import { runChangePassword, type ChangePasswordReport } from "../core/backup/change-password.ts";
 import { humanSize } from "../core/model/gallery-view-model.ts";
-import type { NameBoundary } from "../core/model/gallery-model.ts";
 import { t } from "../core/text.ts";
 
 const errMsg = (e: unknown): string => String((e as { message?: unknown })?.message || e);
@@ -102,7 +101,7 @@ export async function runFullLibraryBackupFlow(p: BackupFlowPorts): Promise<void
     await p.busy(t("bk.scanning"), async () => {
       const manifest = await walkLibrary((folder) => snapshotFolderOnce(p.watchFolder, folder), { onFolder: (_f, n) => p.setBusyText(t("bk.scanningFolders", { n })) });
       if (!manifest.files.length) { p.status(t("bk.empty"), true); return; }
-      const cachedBefore = new Map(manifest.files.map((fr) => [fr.path, fr.syncState != null && p.isCached(fr.syncState)]));
+      const cachedBefore = new Map(manifest.files.map((fr) => [fr.identifier, fr.syncState != null && p.isCached(fr.syncState)]));
       const report = await runLibraryBackup(manifest.files, {
         readBytes: async (path) => {
           const f = p.readFile(path);
@@ -158,15 +157,13 @@ export interface ChangePasswordPorts {
   isCached(syncState: string): boolean;
   file(fullName: string): { isEncrypted(): Promise<boolean>; rekey(o: { newPassword: string; isOnline: () => boolean }): Promise<{ status: string }> };
   isOnline(): boolean;
-  naming?: NameBoundary;
-  invalidateThumb(bareName: string): Promise<void>;
-  invalidateEncrypted(bareName: string): void;
+  invalidateThumb(identifier: string): Promise<void>;
+  invalidateEncrypted(identifier: string): void;
   refresh(): void;
   status(msg: string, isError?: boolean): void;
   reportError(e: unknown, level: "log"): void;
 }
 export async function changePasswordFlow(p: ChangePasswordPorts): Promise<void> {
-  const bare = p.naming?.bare ?? ((s: string) => s);
   if (!p.hasVerifier()) { p.status(t("gs.changePwNoVerifier"), true); return; }
   let oldPw: string | null = null;
   for (let attempt = 0; attempt < 3 && oldPw == null; attempt++) {
@@ -195,8 +192,8 @@ export async function changePasswordFlow(p: ChangePasswordPorts): Promise<void> 
       const targets: string[] = [];
       for (const fr of manifest.files) {
         if (!(fr.syncState != null && p.isCached(fr.syncState))) continue;
-        try { if (await p.file(fr.path).isEncrypted()) targets.push(fr.path); }
-        catch (e) { p.reportError(new Error(`[change-password] isEncrypted probe failed for ${fr.path}: ` + String(e)), "log"); }
+        try { if (await p.file(fr.identifier).isEncrypted()) targets.push(fr.identifier); }
+        catch (e) { p.reportError(new Error(`[change-password] isEncrypted probe failed for ${fr.identifier}: ` + String(e)), "log"); }
       }
       report = await runChangePassword({
         targets, oldPassword: oldP, newPassword: newP,
@@ -207,9 +204,8 @@ export async function changePasswordFlow(p: ChangePasswordPorts): Promise<void> 
         onError: (name, e) => p.reportError(new Error(`[change-password] rekey failed for ${name}: ` + String(e)), "log"),
       });
       for (const n of report.moved) {
-        const b = bare(n);
-        try { await p.invalidateThumb(b); } catch (e) { p.reportError(new Error(`[change-password] thumb invalidate failed for ${n}: ` + String(e)), "log"); }
-        p.invalidateEncrypted(b);
+        try { await p.invalidateThumb(n); } catch (e) { p.reportError(new Error(`[change-password] thumb invalidate failed for ${n}: ` + String(e)), "log"); }
+        p.invalidateEncrypted(n);
       }
     });
     const n = String(report.moved.length), m = String(report.kept.length), k = String(partial);

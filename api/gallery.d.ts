@@ -1,3 +1,4 @@
+import { Identifiers } from '@internal/store';
 import { Item } from '@internal/store';
 import type { NoticeHandle } from '@internal/workbench-elements';
 import type { NoticeOpts } from '@internal/workbench-elements';
@@ -21,11 +22,16 @@ export declare interface AsideEmptyResult {
 
 /** 搁置区的一行（只元数据，无字节）。 */
 export declare interface AsideItem {
-    kind: AsideKind;
+    /** 在哪个箱子里（回收站 / 备份箱）。0.6.0 起叫 box（原 kind——kind 让给了文档种类）。 */
+    box: AsideKind;
     /** 列表内唯一（同名可以有很多条：同一份稿留过好几版底）。 */
     key: string;
-    /** 裸名 = 展示名 = 恢复目标名。 */
-    name: string;
+    /** 身份 = 恢复目标（0.6.0 起叫 identifier，原 name）。 */
+    identifier: string;
+    /** 主干（文档）或最后一段（非文档，如被删的图片）。 */
+    stem: string;
+    /** 文档种类；不是文档 → null。 */
+    kind: string | null;
     /** 挪到一边的时刻（ms）；解析不出 = 0。 */
     at: number;
     side: "local" | "cloud" | "both";
@@ -43,7 +49,8 @@ export declare type AsideScope = "local" | "cloud" | "both";
 
 export declare interface AsideTile {
     key: string;
-    name: string;
+    identifier: string;
+    stem: string;
     at: number;
     source: string;
 }
@@ -77,7 +84,7 @@ export declare const backupArchiveName: (now?: Date) => string;
 
 /** 清单里的一件（size 只是列举给的估值，可能缺；真预算用读到的字节算）。 */
 export declare interface BackupFileRef {
-    path: string;
+    identifier: string;
     size?: number;
     syncState?: string;
 }
@@ -187,9 +194,8 @@ export declare interface ChangePasswordPorts {
         }>;
     };
     isOnline(): boolean;
-    naming?: NameBoundary;
-    invalidateThumb(bareName: string): Promise<void>;
-    invalidateEncrypted(bareName: string): void;
+    invalidateThumb(identifier: string): Promise<void>;
+    invalidateEncrypted(identifier: string): void;
     refresh(): void;
     status(msg: string, isError?: boolean): void;
     reportError(e: unknown, level: "log"): void;
@@ -233,16 +239,17 @@ export declare interface CloudFile {
 }
 
 export declare interface CloudImageItem {
-    path: string;
-    name: string;
+    identifier: string;
+    label: string;
     size?: number;
     lastModified?: number;
     cached: boolean;
 }
 
+/** 不是文档的文件（图片 / 杂物）：identifier = 身份；label = 最后一段（给人看）。 */
 export declare interface CloudOtherItem {
-    path: string;
-    name: string;
+    identifier: string;
+    label: string;
     size?: number;
     lastModified?: number;
 }
@@ -255,7 +262,7 @@ export declare function configureText(opts: {
     lang?: GalleryLang;
 }): void;
 
-export declare function copyTargetName(sourceName: string, taken: (name: string) => boolean): string;
+export declare function copyTargetName(source: string, taken: (identifier: string) => boolean, ids: Identifiers): string;
 
 export declare function crc32(bytes: Uint8Array, from?: number, to?: number): number;
 
@@ -299,32 +306,32 @@ export declare function createGalleryDataFace(deps: {
     store: () => DataFaceStore | null;
     policy?: DataFacePolicy;
 }): {
-    /** 订阅当前夹：立即本地帧、云端到了同一 cb 再闪。文档 natural 倒序；图片按修改时间倒序；杂物显示不打开；子夹自然正序。 */
+    /** 订阅当前夹：立即本地帧、云端到了同一 cb 再闪。文档按主干 natural 倒序；图片按修改时间倒序；杂物显示不打开；子夹自然正序。 */
     watchFolder(folder: string, cb: (snap: GallerySnapshot) => void, opts?: {
         onError?: (err: unknown, phase: WatchFolderErrorPhase) => void;
     }): () => void;
     watchFolderImages(folder: string, cb: (snap: {
-        path: string;
+        folder: string;
         images: CloudImageItem[];
         folderNames: string[];
     }) => void): () => void;
-    openCloudImage: (path: string) => Promise<Blob | null>;
+    openCloudImage: (identifier: string) => Promise<Blob | null>;
     /** 搁置区（0.5.0；回收站 / 备份箱同一个面）：store 两端聚合的 TrashItem[] → AsideItem（只元数据，无 blob），新的在前。
      *  读哪个列表由 ASIDE 表定；列表只来自 store，宿主没有注入口。 */
-    listAside: (kind: AsideKind) => Promise<AsideItem[]>;
+    listAside: (box: AsideKind) => Promise<AsideItem[]>;
 };
 
 export declare interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thumbs" | "store"> {
     store: () => (VerbStore & DataFaceStore) | null;
     policy: DataFacePolicy & {
-        naming?: NameBoundary;
-        /** 缩略图：不给 = 无缩略图（WXHW 2.0）。peek 从 store getPeek 读 app 域 entry（WeebPaint: Thumbnails/thumbnail.png）。 */
+        /** 缩略图：不给 = 无缩略图。peek 从 store getPeek 读 app 域 entry（WeebPaint: Thumbnails/thumbnail.png）。
+         *  kinds（0.6.0，原 has）：哪几个文档种类有缩略图（docKinds 表里的 kind）。fetch 收身份；null = 确定没有（进缓存、显示占位）；抛 = 未知（不缓存；云端-only 显示云）。 */
         thumbs?: {
-            fetch: (name: string, source: ThumbSource) => Promise<Blob | null>;
+            kinds: readonly string[];
+            fetch: (identifier: string, source: ThumbSource) => Promise<Blob | null>;
             store?: ThumbStore;
             dbName?: string;
-            galleryId?: () => string; /** 0.2.1：哪些文档有缩略图可取（WXHW：只有书）。 */
-            has?: (fullName: string) => boolean;
+            galleryId?: () => string;
         };
     };
     text?: {
@@ -346,15 +353,15 @@ export declare function createGalleryVerbs(d: VerbDeps): {
         folder: string;
         folderNames: string[];
     }) => string[];
-    copy: (item: GItem, currentNames: readonly string[]) => Promise<void>;
+    copy: (item: GItem, currentIdentifiers: readonly string[]) => Promise<void>;
     push: (item: GItem) => Promise<void>;
     unload: (item: GItem) => Promise<void>;
     keepOffline: (item: GItem) => Promise<void>;
     reupload: (item: GItem) => Promise<void>;
     del: (item: GItem) => Promise<void>;
     deleteImage: (img: {
-        path: string;
-        name: string;
+        identifier: string;
+        label: string;
     }) => Promise<void>;
     folderDelete: (ft: {
         name: string;
@@ -381,16 +388,16 @@ export declare interface Crumb {
 }
 
 export declare interface DataFacePolicy {
-    isDoc?: (path: string) => boolean;
-    isImage?: (path: string) => boolean;
-    naming?: NameBoundary;
+    /** 不是文档的文件里哪些算图片（默认 = 浏览器可解码集）。 */
+    isImage?: (identifier: string) => boolean;
 }
 
 /** 数据面能看见的 store 子集（多库切换后实例会变，所以是 getter）。 */
 export declare interface DataFaceStore {
+    identifiers: Identifiers;
     files: {
         watchFolder(folder: string, cb: (snap: {
-            path: string;
+            folder: string;
             items: Item[];
             folders: string[];
             complete: boolean;
@@ -400,8 +407,7 @@ export declare interface DataFaceStore {
         listTrash(): Promise<TrashItem[]>;
         listBackup(): Promise<TrashItem[]>;
     };
-    file(name: string, opts: {
-        isZip: false;
+    file(identifier: string, opts: {
         mode: "existing";
     }): {
         open(): Promise<Blob | null>;
@@ -498,7 +504,7 @@ declare function flush(): void;
 
 /** 一夹的一次性快照结果。authoritative:false = 这夹没拿到权威帧（离线/未登录/列举失败），清单可能缺项。 */
 export declare interface FolderProbe {
-    path: string;
+    folder: string;
     files: BackupFileRef[];
     folders: string[];
     authoritative: boolean;
@@ -2128,8 +2134,8 @@ export declare interface GalleryItem {
     deletedAt?: number;
 }
 
-/** store.Item{path,syncState,size,lastModified} → GItem：裸名 + **syncState 原样透传**（0.4.0：不再派生 local/cloud/dirty… 布尔；状态的唯一源在 store）。 */
-export declare function galleryItemFromStoreItem(it: Item, naming?: NameBoundary): GItem;
+/** store.Item → GItem：切开身份取主干和种类 + **syncState 原样透传**（0.4.0：不派生 local/cloud/dirty… 布尔；状态的唯一源在 store）。不是文档 → null。 */
+export declare function galleryItemFromStoreItem(it: Item, ids: Identifiers): GItem | null;
 
 export declare type GalleryKind = "onedrive" | "folder";
 
@@ -2195,10 +2201,9 @@ export declare interface GalleryScreenDeps {
         subtitle?: (item: GItem) => string | null | undefined;
         marker?: (item: GItem) => "unread" | null | undefined;
     };
-    /** 0.2.1：这份文档有没有缩略图可取（WXHW：txt 稿没有 → 不去尾读、加密 txt 不显锁图标）。不给 = 全部都有（WeebPaint）。 */
-    hasThumb?: (fullName: string) => boolean;
-    naming?: NameBoundary;
-    isZipDoc?: (fullName: string) => boolean;
+    /** 0.6.0（原 0.2.1 hasThumb）：哪几个文档种类有缩略图（docKinds 的 kind）。createGallery 从 policy.thumbs.kinds 填；空 = 都没有。
+     *  没有缩略图的种类不去尾读、加密件不显锁图标（WXHW 的 txt 稿）。 */
+    thumbKinds?: readonly string[];
     thumbs?: ThumbCache;
     imageThumbs?: {
         getOrFetch(path: string, token: string): Promise<Blob>;
@@ -2217,7 +2222,7 @@ export declare interface GalleryScreenDeps {
 }
 
 export declare interface GallerySnapshot {
-    path: string;
+    folder: string;
     items: GItem[];
     images: CloudImageItem[];
     others: CloudOtherItem[];
@@ -2231,9 +2236,9 @@ export declare type GalleryTextKey = keyof typeof GALLERY_TEXT;
 export declare const galleryTextKeys: () => GalleryTextKey[];
 
 export declare interface GalleryTile {
-    name: string;
-    displayName: string;
-    fullPath: string;
+    identifier: string;
+    stem: string;
+    kind: string;
     time: number;
     size: number;
     syncState: SyncState;
@@ -2253,11 +2258,14 @@ export declare type GalleryVerbs = ReturnType<typeof createGalleryVerbs>;
 /** 图库一屏能开的视图：文件 + 两个搁置区（回收站 / 备份箱，0.5.0）。 */
 export declare type GalleryView = "files" | AsideKind;
 
-/** 0.4.0（user 2026-09-19「gallery 该直接吃 syncState」）：图库消费的文件项 = store Item 的裸名视图。
+/** 0.4.0（user 2026-09-19「gallery 该直接吃 syncState」）：图库消费的文件项 = store Item 切开之后的视图。
  *  **唯一状态源 = syncState（store 9 态）**；徽章 / 菜单 / 缩略图来源全从它算，本包不再派生 local/cloud/dirty/ghost… 一堆布尔
- *  （那正是 store Item 注释警告的「下游重推导越狱」形状）。size / lastModified 是数据不是状态。 */
+ *  （那正是 store Item 注释警告的「下游重推导越狱」形状）。size / lastModified 是数据不是状态。
+ *  0.6.0：identifier = 身份（原 name，裸名时代的产物退役）；stem / kind 来自 store.identifiers.parse——图库里只有文档（parse 得出的）才是 GItem。 */
 export declare interface GItem {
-    name: string;
+    identifier: string;
+    stem: string;
+    kind: string;
     syncState: SyncState;
     size?: number;
     lastModified?: number;
@@ -2307,16 +2315,15 @@ export declare function imageThumbToken(it: {
     size?: number;
 }): string;
 
-/** 孪生裸名（v0.9.34 拍板：图库点图片 = 开同夹同名 ora，没有才新建）：foo.png @ 夹A → "夹A/foo"。 */
-export declare const imageTwinBareName: (folder: string, basename: string) => string;
+/** 孪生身份（v0.9.34 拍板：图库点图片 = 开同夹同主干的文档，没有才新建）：foo.png @ 夹A + 后缀 ".ora" → "夹A/foo.ora"。
+ *  0.6.0：收 docSuffix（宿主 docKinds 表里**第一种**文档的后缀——图片转生成哪一种文档由表的第一行定）。 */
+export declare const imageTwinIdentifier: (folder: string, basename: string, docSuffix: string) => string;
 
 /** boot 期调一次：页面生命周期 / 在线态面包屑 + pagehide flush。record() 不依赖它（懒加载）。 */
 declare function initDiagLog(opts?: {
     app?: string;
     version?: string;
 }): void;
-
-export declare const isDocPath: (p: string) => boolean;
 
 export declare const isImagePath: (p: string) => boolean;
 
@@ -2356,17 +2363,10 @@ export declare function mimeForImageName(name: string): string;
 
 export declare function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): GalleryHandle;
 
-/** 裸名 ↔ 库全名的边界（WeebPaint：`X` ↔ `X.ora`；身份=全名的 app 传恒等/不传）。 */
-export declare interface NameBoundary {
-    bare: (s: string) => string;
-    full: (bare: string) => string; /** 只管显示（tile 标题）：身份=全名的 app 用它去扩展名；不给 = 显示 basename。 */
-    display?: (bare: string) => string;
-}
-
 export declare function naturalCompare(a: string, b: string): number;
 
 /** 拿一个不占用的 `${base}.${ext}` / `${base} N.${ext}`（导出到云盘用；兜底加时间戳保证必返回）。
- *  isOccupied = store.files.nameOccupied 注入（本模块保持零 store 依赖可测）。 */
+ *  isOccupied = store.files.occupied 注入（本模块保持零 store 依赖可测）。 */
 export declare function nextFreeExportName(base: string, ext: string, isOccupied: (name: string) => Promise<boolean>, fallbackStamp?: () => number): Promise<string>;
 
 /** 面包屑（非错误的时间线事件）。tag 短词：boot / auth / gallery / page / net。 */
@@ -2529,7 +2529,8 @@ export declare interface StoreUIDeps {
     showNotice: (opts: NoticeOpts) => NoticeHandle;
     sheets: SyncGateSheets;
     reportError: (err: unknown, level?: "error" | "warning" | "info" | "log") => void;
-    naming?: NameBoundary;
+    /** 0.6.0：冲突面上给人看的名字（身份 → 主干）。不给 = 显示身份原样。通常 = `(id) => store.identifiers.parse(id)?.stem ?? id`。 */
+    stemOf?: (identifier: string) => string;
     /** 宿主 i18n 接管 store 的 busy 文案（不给 = 包内默认 st.*）。 */
     text?: (key: StoreTextKey, params?: StoreTextParams) => string | undefined;
 }
@@ -2632,37 +2633,36 @@ export declare function thumbTargetSize(w: number, h: number, max: number): {
 
 export declare function tileFor(item: GItem, opts: {
     signedIn: boolean;
-    activeName: string | null;
+    activeIdentifier: string | null;
     encrypted?: boolean;
 }): GalleryTile;
 
 /** 复制/展示用的整段文本：环境头 + 每条一行「MM-DD HH:MM:SS.mmm L msg」（旧在上、新在下）。 */
 declare function toText(): string;
 
-export declare function uniqueBareName(stem: string, occupied: (fullName: string) => Promise<unknown>, naming?: NameBoundary): Promise<string>;
+export declare function uniqueIdentifier(identifier: string, occupied: (identifier: string) => Promise<unknown>, ids: Identifiers): Promise<string>;
 
 export declare interface VerbDeps {
     store: () => VerbStore;
     host: VerbHost;
     doc: VerbDoc;
-    naming?: NameBoundary;
-    /** 这份文档在 store 里是不是 zip 容器（WeebPaint .ora 恒 true；WXHW .txt false / .webxiaoheiwu.zip true）。 */
-    isZipDoc?: (fullName: string) => boolean;
     thumbs?: {
-        invalidate(name: string): Promise<void> | void;
+        invalidate(identifier: string): Promise<void> | void;
     };
-    onEncryptionChanged?: (name: string) => void;
+    onEncryptionChanged?: (identifier: string) => void;
     encryption?: VerbEncryption;
 }
 
 /** 编辑器侧（DocHost 的动词子集）：只管**当前打开**的那份。 */
 export declare interface VerbDoc {
+    /** 改当前打开的那份的名字（编辑器自己的改名 UI）；返回新身份，没改 → null。 */
     renameActive(): Promise<string | null>;
-    setName(name: string): void;
+    /** 当前打开的那份被图库挪了文件夹 → 告诉编辑器新身份（0.6.0 起叫 setIdentifier，原 setName）。 */
+    setIdentifier(identifier: string): void;
     push(item: GItem): Promise<void>;
     unload(item: GItem): Promise<void>;
     exit(): Promise<void>;
-    dropCheckpoint(name: string): Promise<void> | void;
+    dropCheckpoint(identifier: string): Promise<void> | void;
 }
 
 export declare interface VerbEncryption {
@@ -2711,7 +2711,8 @@ export declare interface VerbFile {
 export declare interface VerbHost {
     signedIn(): boolean;
     online(): boolean;
-    activeName(): string | null;
+    /** 当前打开的文档的身份（0.6.0 起叫 activeIdentifier，原 activeName）。 */
+    activeIdentifier(): string | null;
     confirm(title: string, msg: string): Promise<boolean>;
     input(title: string, def: string, opts?: {
         placeholder?: string;
@@ -2725,12 +2726,12 @@ export declare interface VerbHost {
 }
 
 export declare interface VerbStore {
-    file(name: string, opts: {
-        isZip: boolean;
+    identifiers: Identifiers;
+    file(identifier: string, opts: {
         mode: "new" | "existing";
     }): VerbFile;
     files: {
-        nameOccupied(name: string): Promise<unknown>;
+        occupied(identifier: string): Promise<unknown>;
         deleteFolder(path: string): Promise<unknown>;
         restoreTrash(o: {
             trashKey: string | null;
@@ -2790,9 +2791,9 @@ export declare type WatchFolderFn = (folder: string, cb: (s: WatchSnapshot) => v
 
 /** watchFolder 快照的**结构型**端口（刻意不 import 库类型：本模块零 store 依赖）。 */
 export declare interface WatchSnapshot {
-    path: string;
+    folder: string;
     items: {
-        path: string;
+        identifier: string;
         size?: number;
         syncState?: string;
     }[];
