@@ -457,9 +457,10 @@ const GALLERY_TEMPLATE = `
             </div>
           </div>
 
-          <div v-for="row in fileTiles" :key="row.t.identifier" class="gallery-tile" :class="{ active: row.t.isActive }" @click="openTile(row.item)">
+          <div v-for="row in fileTiles" :key="row.t.identifier" class="gallery-tile" :class="{ active: row.t.isActive, encrypted: row.t.encrypted }" @click="openTile(row.item)">
             <ThumbCell :enc-name="row.t.encrypted && row.thumb ? row.t.identifier : null" :fetchable="!row.t.encrypted && (row.t.hasCloud || row.t.hasLocal) && row.thumb" :is-cloud="!row.t.hasLocal && row.t.hasCloud" :cloud-newer="row.t.cloudNewer" :thumb-token="String(row.t.time || row.t.size || 0)" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="phHtml(row.t.identifier)" :alt="row.t.identifier" @unlock="onUnlock" />
             <span v-if="row.ov" class="gallery-tile-overlay" v-html="row.ov"></span>
+            <span v-if="row.t.encrypted" class="gallery-tile-lockmark" :title="L.encrypted" v-html="ICON.lock"></span>
             <div class="gallery-tile-name-row">
               <span v-if="row.t.isActive" class="gallery-tile-active-tag">{{ L.activeTag }}</span>
               <div class="gallery-tile-name" :title="row.t.identifier"><span v-if="row.marker==='unread'" class="gallery-marker unread" :title="L.unread"></span>{{ row.t.stem }}</div>
@@ -524,9 +525,10 @@ const GALLERY_TEMPLATE = `
         </template>
 
         <template v-if="view!=='files' && !loading">
-          <div v-for="row in asideTiles" :key="row.t.key" class="gallery-tile aside" :class="'aside-' + row.item.box">
+          <div v-for="row in asideTiles" :key="row.t.key" class="gallery-tile aside" :class="['aside-' + row.item.box, { encrypted: row.item.encrypted }]">
             <ThumbCell :fetchable="row.fetch" :is-cloud="row.fetch && row.item.side==='cloud'" thumb-token="0" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="row.item.kind != null ? phHtml(row.t.identifier) : ''" :alt="row.t.identifier" />
             <span v-if="row.ov" class="gallery-tile-overlay" v-html="row.ov"></span>
+            <span v-if="row.item.encrypted" class="gallery-tile-lockmark" :title="L.encrypted" v-html="ICON.lock"></span>
             <div class="gallery-tile-name-row">
               <div class="gallery-tile-name" :title="row.t.identifier">{{ row.t.stem }}</div>
               <div class="gallery-tile-meta" :title="fullTime(row.t.at)">{{ row.t.source }} · {{ humanTime(row.t.at) }} {{ row.atWord }}</div>
