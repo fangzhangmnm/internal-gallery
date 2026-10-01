@@ -77,11 +77,12 @@ export interface GalleryScreenDeps {
      *  0.6.4：第二参 = 卡片信息（WXHW 2026-09-30 user「左边是 yyyymmdd，右边是 size」要在封面上印大小），可选、向后兼容。 */
     tileOverlayHtml?: (name: string, info?: TileInfo) => string | undefined;
   };
-  /** 0.2.0：卡片比例。"1/1" 方图（WeebPaint 默认）；"2/3" 竖版书封（WXHW 书库；窄屏一排三本）。
+  /** 卡片比例 = 宽 ÷ 高，一个数。不给 = 1（方图，WeebPaint 默认）；别的比例宿主自己给（WXHW 书库 1/√2、JRB 2/3）。竖版（< 1）自动用更密的排法：卡片窄一档、窄屏一排三张。
+   *  （0.2.0–0.6.x 是闭集 "1/1" | "2/3"；user 2026-10-01「改成只支持默认1:1和自定义可以吗」——包不该认识某一个具体的书封比例。）
    *  0.3.0（JRB 第三消费者，提案 ai-docs/20260919-proposal-list-view.md）：layout "list" = 一行一件、名字整行（最多折两行不截断）、副标题一行、右侧 ⋯；
    *  subtitle / marker = 宿主 hook（JRB：状态头 / 未读点）。全部可选，不给 = 0.2.2 行为。 */
   tile?: {
-    aspect?: "1/1" | "2/3";
+    aspect?: number;
     layout?: "cards" | "list";
     subtitle?: (item: GItem) => string | null | undefined;
     marker?: (item: GItem) => "unread" | null | undefined;
@@ -428,9 +429,11 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         retry: t("gal.retry"), openDiag: t("gal.openDiag"), reload: t("gal.reload"),
         keepOffline: t("gal.keepOffline"), unread: t("gal.marker.unread"),
       };
-      const tileTall = d.tile?.aspect === "2/3";
+      const tileAspect = typeof d.tile?.aspect === "number" && Number.isFinite(d.tile.aspect) && d.tile.aspect > 0 ? d.tile.aspect : null;   // null = 默认方图（样式表里的 1 / 1）
+      const tileTall = tileAspect != null && tileAspect < 1;
+      const tileStyle = tileAspect != null ? { "--tile-aspect": String(tileAspect) } : null;
       return {
-        tileTall, layout, setLayout: (l: "cards" | "list") => { layout.value = l; },
+        tileTall, tileStyle, layout, setLayout: (l: "cards" | "list") => { layout.value = l; },
         view, folder, loading, stalled, retry, openDiag, reloadApp, openMenu, isEmpty, emptyText, L, phHtml,
         folderTiles, fileTiles, imageTiles, otherTiles, asideTiles, crumbs,
         badgeIcon, fmtMeta, humanTime, fullTime, ICON, toggleMenu, menuMount: el, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
@@ -462,7 +465,7 @@ const GALLERY_TEMPLATE = `
         </template>
       </div>
 
-      <div class="gallery-grid" :class="{ tall: tileTall, list: layout==='list' }" v-show="!isEmpty || loading">
+      <div class="gallery-grid" :class="{ tall: tileTall, list: layout==='list' }" :style="tileStyle" v-show="!isEmpty || loading">
         <div v-if="loading" class="gallery-loading">
           <template v-if="!stalled">{{ L.loading }}</template>
           <template v-else>

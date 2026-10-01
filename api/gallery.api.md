@@ -2407,7 +2407,7 @@ export interface GalleryScreenDeps {
     // (undocumented)
     thumbs?: ThumbCache;
     tile?: {
-        aspect?: "1/1" | "2/3";
+        aspect?: number;
         layout?: "cards" | "list";
         subtitle?: (item: GItem) => string | null | undefined;
         marker?: (item: GItem) => "unread" | null | undefined;
