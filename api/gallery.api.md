@@ -191,6 +191,16 @@ export type BadgeKind = "syncedBoth" | "dirtyBoth" | "cloudOnly" | "localOnly" |
 export function breadcrumb(folder: string): Crumb[];
 
 // @public (undocumented)
+export interface CachedFacts {
+    // (undocumented)
+    at: number;
+    // (undocumented)
+    token: string;
+    // (undocumented)
+    value: unknown;
+}
+
+// @public (undocumented)
 export interface CachedThumb {
     // (undocumented)
     at: number;
@@ -383,6 +393,9 @@ export function createByteBudget(budget: number): {
 };
 
 // @public (undocumented)
+export function createFactsCache(deps: FactsCacheDeps): FactsCache;
+
+// @public (undocumented)
 export function createFirstFrameWatchdog(onStall: (info: {
     folder: string;
     elapsedMs: number;
@@ -430,7 +443,7 @@ export function createGalleryDataFace(deps: {
 };
 
 // @public (undocumented)
-export interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thumbs" | "store"> {
+export interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thumbs" | "store" | "facts" | "factsKinds"> {
     // (undocumented)
     deviceKv?: DeviceKv;
     // (undocumented)
@@ -438,6 +451,13 @@ export interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thu
         thumbs?: {
             kinds: readonly string[];
             fetch: (identifier: string, source: ThumbSource) => Promise<Blob | null>;
+            store?: ThumbStore;
+            dbName?: string;
+            galleryId?: () => string;
+        };
+        facts?: {
+            kinds: readonly string[];
+            fetch: (identifier: string, source: FactsSource) => Promise<unknown>;
             store?: ThumbStore;
             dbName?: string;
             galleryId?: () => string;
@@ -611,6 +631,50 @@ export function downloadStamp(now?: Date): string;
 // @public (undocumented)
 function entries(): readonly DiagEntry[];
 
+// @public (undocumented)
+export interface FactsCache {
+    // (undocumented)
+    clear(): Promise<number>;
+    // (undocumented)
+    getOrFetch(identifier: string, token: string, source: FactsSource): Promise<{
+        value: unknown;
+        fromCache: boolean;
+    }>;
+    // (undocumented)
+    invalidate(identifier: string): Promise<void>;
+    // (undocumented)
+    onInvalidated(fn: (key: string) => void): () => void;
+    // (undocumented)
+    read(identifier: string): Promise<CachedFacts | null>;
+    // (undocumented)
+    readonly stats: {
+        hits: number;
+        misses: number;
+        errors: number;
+    };
+    // (undocumented)
+    write(identifier: string, token: string, value: unknown): Promise<void>;
+}
+
+// @public (undocumented)
+export interface FactsCacheDeps {
+    fetch: (identifier: string, source: FactsSource) => Promise<unknown>;
+    // (undocumented)
+    keyOf: (identifier: string) => string;
+    // (undocumented)
+    now?: () => number;
+    // (undocumented)
+    report?: (err: unknown) => void;
+    // (undocumented)
+    store: ThumbStore;
+}
+
+// @public (undocumented)
+export const factsKeyFor: (galleryId: string, identifier: string) => string;
+
+// @public (undocumented)
+export type FactsSource = "local" | "cloud";
+
 // @public
 export function fetchZipEntryThumb(file: PeekableFile, source: "local" | "cloud", opts?: {
     zipEntry?: string;
@@ -685,6 +749,8 @@ export function fullTime(ts: number): string;
 export interface Gallery {
     // (undocumented)
     data: ReturnType<typeof createGalleryDataFace>;
+    // (undocumented)
+    facts: FactsCache | null;
     // (undocumented)
     handle: GalleryHandle;
     // (undocumented)
@@ -2239,13 +2305,14 @@ export type GalleryDataFace = ReturnType<typeof createGalleryDataFace>;
 // @public
 export function galleryDefaultName(now?: Date): string;
 
-// @public
+// @public (undocumented)
 export interface GalleryDocHost extends VerbDoc {
     importImageAsDoc?(file: File, opts: {
         nameOverride: string;
     }): Promise<void>;
     // (undocumented)
     open(item: GItem): Promise<void>;
+    tileAction?(item: GItem, facts: unknown): void | Promise<void>;
 }
 
 // @public (undocumented)
@@ -2384,6 +2451,9 @@ export interface GalleryScreenDeps {
     doc: GalleryDocHost;
     // (undocumented)
     encryption?: GalleryEncryption;
+    // (undocumented)
+    facts?: FactsCache;
+    factsKinds?: readonly string[];
     folderMemory?: {
         get(): string;
         set(p: string): void;
@@ -2419,7 +2489,8 @@ export interface GalleryScreenDeps {
             cls?: string;
         }) => string;
         tilePlaceholderHtml?: (name: string, info?: TileInfo) => string | undefined;
-        tileOverlayHtml?: (name: string, info?: TileInfo) => string | undefined;
+        tileOverlayHtml?: (name: string, info?: TileInfo, facts?: unknown) => string | undefined;
+        tileAction?: (name: string, info: TileInfo, facts: unknown) => TileAction | null;
     };
     // (undocumented)
     vue: VueRuntime;
@@ -2927,6 +2998,16 @@ export function thumbTargetSize(w: number, h: number, max: number): {
     w: number;
     h: number;
 };
+
+// @public
+export interface TileAction {
+    // (undocumented)
+    icon: string;
+    // (undocumented)
+    state?: "ready" | "none" | "unknown";
+    // (undocumented)
+    title: string;
+}
 
 // @public (undocumented)
 export function tileFor(item: GItem, opts: {

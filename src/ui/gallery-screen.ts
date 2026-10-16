@@ -14,6 +14,7 @@ import { note as diagNote } from "../core/guards/diag-log.ts";
 import type { GalleryDataFace, GallerySnapshot, CloudImageItem } from "../core/data-face.ts";
 import { createGalleryVerbs, type VerbHost, type VerbDoc, type VerbStore, type VerbEncryption } from "../core/verbs.ts";
 import type { ThumbCache } from "../core/thumbs/thumb-cache.ts";
+import type { FactsCache } from "../core/facts/facts-cache.ts";
 import { t } from "../core/text.ts";
 import { isPng, readPngText, PNG_BLURB_KEYWORD } from "../core/thumbs/png-text.ts";
 
@@ -45,8 +46,12 @@ export interface VueRuntime {
   nextTick: (fn?: () => void) => Promise<void>;
 }
 /** 图库对编辑器的全部要求（提案 §2 DocHost；WeebPaint session-state 的十处直调收成这一个端口）。 */
+/** 0.8.0：卡片右下角那粒动作钮长什么样（宿主按卡片信息 + 事实决定）；null = 这张卡没有钮。state：ready = 亮；none = 不画（和 null 一样，留给「事实已到、确定没有」）；unknown = 淡（事实还没到）。 */
+export interface TileAction { icon: string; title: string; state?: "ready" | "none" | "unknown" }
 export interface GalleryDocHost extends VerbDoc {
   open(item: GItem): Promise<void>;
+  /** 0.8.0：点了卡片上的动作钮（不打开那份）。facts = 这张卡的事实（policy.facts 取的；没取到 = null）。 */
+  tileAction?(item: GItem, facts: unknown): void | Promise<void>;
   /** 图片 tile 孪生语义（WeebPaint）：把图片字节转生成新文档；不实现 = 图片 tile 只显示不可开。 */
   importImageAsDoc?(file: File, opts: { nameOverride: string }): Promise<void>;
 }
@@ -75,7 +80,10 @@ export interface GalleryScreenDeps {
      *  包只给一个铺满封面、不吃指针事件的槽（`.gallery-tile-overlay`，紧跟在缩略图元素后面，宿主 CSS 可以用相邻选择器区分底下是图还是占位），
      *  里面画什么、怎么排版全归宿主；包不因为有没有这一层改变任何别的行为。列表布局不画。不给 / 返回空 = 不画。
      *  0.6.4：第二参 = 卡片信息（WXHW 2026-09-30 user「左边是 yyyymmdd，右边是 size」要在封面上印大小），可选、向后兼容。 */
-    tileOverlayHtml?: (name: string, info?: TileInfo) => string | undefined;
+    tileOverlayHtml?: (name: string, info?: TileInfo, facts?: unknown) => string | undefined;
+    /** 0.8.0：卡片右下角一粒动作钮（有正式的位置和指针事件，不盖同步徽章；点了走 doc.tileAction，不打开那份）。facts = policy.facts 取到的事实（没取到 = null）；
+     *  事实到了会重算（响应式）。文件卡才有；搁置区 / 列表布局不画。 */
+    tileAction?: (name: string, info: TileInfo, facts: unknown) => TileAction | null;
   };
   /** 卡片比例 = 宽 ÷ 高，一个数。不给 = 1（方图，WeebPaint 默认）；别的比例宿主自己给（WXHW 书库 1/√2、JRB 2/3）。竖版（< 1）自动用更密的排法：卡片窄一档、窄屏一排三张。
    *  （0.2.0–0.6.x 是闭集 "1/1" | "2/3"；user 2026-10-01「改成只支持默认1:1和自定义可以吗」——包不该认识某一个具体的书封比例。）
@@ -91,6 +99,9 @@ export interface GalleryScreenDeps {
    *  没有缩略图的种类不去尾读、加密件不显锁图标（WXHW 的 txt 稿）。 */
   thumbKinds?: readonly string[];
   thumbs?: ThumbCache;
+  /** 0.8.0：卡片的「事实」（createGallery 从 policy.facts 填）：哪几个种类取、缓存在哪。 */
+  factsKinds?: readonly string[];
+  facts?: FactsCache;
   imageThumbs?: { getOrFetch(path: string, token: string): Promise<Blob> };
   encryption?: GalleryEncryption;
   /** 「上次在哪个夹」的记忆（WeebPaint = synced collection appState.currentDirectory）；不给 = 只记内存。 */
@@ -137,7 +148,8 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
   const { createApp, defineComponent, reactive, ref, computed, watch, onMounted, onUnmounted, nextTick } = d.vue;
   const icon = d.ui.iconHtml;
   const phHtml = (name: string, info?: TileInfo): string => d.ui.tilePlaceholderHtml?.(name, info) ?? "";   // 0.1.2：宿主给的占位图标；空 = 退回名字首字
-  const ovHtml = (name: string, info?: TileInfo): string => { try { return d.ui.tileOverlayHtml?.(name, info) ?? ""; } catch { return ""; } };   // 0.5.0：宿主盖在封面上的一层
+  const ovHtml = (name: string, info?: TileInfo, facts: unknown = null): string => { try { return d.ui.tileOverlayHtml?.(name, info, facts) ?? ""; } catch { return ""; } };   // 0.5.0：宿主盖在封面上的一层（0.8.0 多一个 facts）
+  const actionOf = (name: string, info: TileInfo, facts: unknown): TileAction | null => { try { const a = d.ui.tileAction?.(name, info, facts) ?? null; return a && a.state !== "none" ? a : null; } catch { return null; } };   // 0.8.0
   // 0.6.4：宿主画封面 / 占位时拿到的卡片信息。文件卡 = GItem 本尊的字段；搁置区卡从 AsideItem 映射（at → lastModified；没有 size）。
   const fileInfo = (it: GItem): TileInfo => ({ identifier: it.identifier, stem: it.stem, kind: it.kind, syncState: it.syncState, size: it.size, lastModified: it.lastModified });
   const asideInfo = (it: AsideItem): TileInfo => ({ identifier: it.identifier, stem: it.stem, kind: it.kind, lastModified: it.at || undefined, aside: it.box });
@@ -155,6 +167,27 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
   const _thumbRev = reactive(new Map<string, number>());
   d.thumbs?.onInvalidated((key) => { _thumbRev.set(key, (_thumbRev.get(key) ?? 0) + 1); });
   const thumbKey = (identifier: string) => identifier;
+  // 0.8.0 事实：身份 → { token, value }（响应式；到了卡片自己重算）。取法同缩略图：按 token 命中缓存、没有就去取（并发限 3），取不到 = 留空、下次再问；invalidate = 清掉重取
+  const factsKinds = new Set(d.factsKinds ?? []);
+  const _facts = reactive(new Map<string, { token: string; value: unknown }>());
+  const _factsInflight = new Set<string>();
+  let _factsRunning = 0; const _factsWaiting: (() => void)[] = []; const FACTS_PAR = 3;
+  d.facts?.onInvalidated((key) => { _facts.delete(key); });
+  function wantFacts(identifier: string, kind: string | null, token: string, source: "local" | "cloud"): void {
+    if (!d.facts || kind == null || !factsKinds.has(kind)) return;
+    const have = _facts.get(identifier); if (have && have.token === token) return;
+    if (_factsInflight.has(identifier)) return;
+    _factsInflight.add(identifier);
+    const go = () => {
+      _factsRunning++;
+      d.facts!.getOrFetch(identifier, token, source)
+        .then(({ value }) => { _facts.set(identifier, { token, value }); })
+        .catch((err: unknown) => d.reportError(new Error("[gallery] facts: " + String(err)), "log"))
+        .finally(() => { _factsInflight.delete(identifier); _factsRunning--; _factsWaiting.shift()?.(); });
+    };
+    if (_factsRunning < FACTS_PAR) go(); else _factsWaiting.push(go);
+  }
+  const factsOf = (identifier: string): unknown => _facts.get(identifier)?.value ?? null;
 
   const ThumbCell = defineComponent({
     name: "ThumbCell",
@@ -347,7 +380,10 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       });
 
       const folderTiles = computed(() => data.folderNames.map((fn) => ({ name: fn, path: pathJoin(folder.value, fn) })));
-      const fileTiles = computed(() => data.files.map((it) => { const tile = tileFor(it, { signedIn: d.host.signedIn(), activeIdentifier: d.host.activeIdentifier(), encrypted: !!encByName[it.identifier] }); return { item: it, t: tile, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.identifier, fileInfo(it)), thumb: hasThumb(it.kind), info: fileInfo(it) }; }));
+      const fileTiles = computed(() => data.files.map((it) => { const tile = tileFor(it, { signedIn: d.host.signedIn(), activeIdentifier: d.host.activeIdentifier(), encrypted: !!encByName[it.identifier] }); const info = fileInfo(it), facts = factsOf(it.identifier); return { item: it, t: tile, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.identifier, info, facts), thumb: hasThumb(it.kind), info, facts, act: actionOf(it.identifier, info, facts) }; }));
+      // 0.8.0：列表一变就把该取的事实排上（加密件不取：尾读到的是密文）；事实到了 _facts 变 → fileTiles 重算 → 钮 / 覆盖层跟着
+      const askFacts = () => { if (!d.facts) return; for (const r of fileTiles.value) if (!r.t.encrypted && (r.t.hasCloud || r.t.hasLocal)) wantFacts(r.t.identifier, r.item.kind, String(r.t.time || r.t.size || 0), r.t.cloudNewer ? "cloud" : "local"); };
+      watch(() => fileTiles.value, askFacts); askFacts();
       // 搁置区卡片：取不取缩略图、时间后面跟哪个词，按 item 自带的 kind 查 ASIDE 表
       const asideTiles = computed(() => aside.value.map((it) => ({ item: it, t: asideTileFor(it), fetch: ASIDE[it.box].thumb === "by-name" && hasThumb(it.kind), atWord: t(ASIDE[it.box].text.at), ov: it.kind != null ? ovHtml(it.identifier, asideInfo(it)) : "", info: asideInfo(it) })));
       const imageTiles = computed(() => data.images.map((im) => ({ raw: im, identifier: im.identifier, label: im.label, size: im.size || 0, time: im.lastModified || 0, token: imageThumbToken(im) })));
@@ -356,6 +392,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const isEmpty = computed(() => view.value !== "files" ? asideTiles.value.length === 0 : folderTiles.value.length === 0 && fileTiles.value.length === 0 && imageTiles.value.length === 0 && otherTiles.value.length === 0);
       const emptyText = computed(() => view.value !== "files" ? t(ASIDE[view.value].text.none) : folder.value ? t("gal.empty.folder", { f: folder.value }) : t("gal.empty.none"));
       const badgeIcon = (k: string) => (ICON as Record<string, string>)[k] || "";
+      const badgeIcon2 = (k: string) => { try { return icon(k); } catch { return ""; } };   // 0.8.0：动作钮的图标走宿主的 iconHtml（宿主 sprite 里的名字）
       const fmtMeta = (x: { time: number; size: number }) => `${humanTime(x.time)} · ${humanSize(x.size)}`;
 
       // ── 卡片 ⋯ 菜单（0.6.2）：以前是卡片里的 absolute + z-index 5。卡片 :hover 带 transform，iOS 上点一下 hover 会粘住 → 卡片自成层叠上下文 →
@@ -394,6 +431,8 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const decryptItem = wrap((item: GItem) => verbs.decryptItem(item));
       async function onUnlock(name: string) { if (await verbs.unlock(name)) await reload(); }
 
+      /** 0.8.0：卡片上的动作钮（不打开那份）。 */
+      function tileAction(item: GItem) { try { void Promise.resolve(d.doc.tileAction?.(item, factsOf(item.identifier))).catch((e: unknown) => d.reportError(e)); } catch (e) { d.reportError(e); } }
       async function openTile(item: GItem) {
         closeMenu();
         if (item.identifier === d.host.activeIdentifier()) { await d.doc.open(item); return; }
@@ -435,9 +474,9 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       return {
         tileTall, tileStyle, layout, setLayout: (l: "cards" | "list") => { layout.value = l; },
         view, folder, loading, stalled, retry, openDiag, reloadApp, openMenu, isEmpty, emptyText, L, phHtml,
-        folderTiles, fileTiles, imageTiles, otherTiles, asideTiles, crumbs,
+        folderTiles, fileTiles, imageTiles, otherTiles, asideTiles, crumbs, badgeIcon2,
         badgeIcon, fmtMeta, humanTime, fullTime, ICON, toggleMenu, menuMount: el, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
-        openTile, openImageTile, deleteImage, rename, move, copy, push, reupload, unload, keepOffline, del, folderDelete, asideRestore, asidePurge, emptyAside,
+        openTile, tileAction, openImageTile, deleteImage, rename, move, copy, push, reupload, unload, keepOffline, del, folderDelete, asideRestore, asidePurge, emptyAside,
         encryptItem, decryptItem, onUnlock, requestUnlock, hasEncryption: !!enc,
         reload, setView: (v: GalleryView) => { view.value = v; void reload(); },
       };
@@ -494,6 +533,7 @@ const GALLERY_TEMPLATE = `
           <div v-for="row in fileTiles" :key="row.t.identifier" class="gallery-tile" :class="{ active: row.t.isActive, encrypted: row.t.encrypted }" @click="openTile(row.item)">
             <ThumbCell :enc-name="row.t.encrypted && row.thumb ? row.t.identifier : null" :fetchable="!row.t.encrypted && (row.t.hasCloud || row.t.hasLocal) && row.thumb" :is-cloud="!row.t.hasLocal && row.t.hasCloud" :cloud-newer="row.t.cloudNewer" :thumb-token="String(row.t.time || row.t.size || 0)" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="phHtml(row.t.identifier, row.info)" :alt="row.t.identifier" @unlock="onUnlock" />
             <span v-if="row.ov" class="gallery-tile-overlay" v-html="row.ov"></span>
+            <span v-if="row.act" class="gallery-tile-action-slot"><button type="button" class="gallery-tile-action" :class="row.act.state || 'ready'" :title="row.act.title" :aria-label="row.act.title" @click.stop="tileAction(row.item)" @pointerdown.stop v-html="badgeIcon2(row.act.icon)"></button></span>
             <span v-if="row.t.encrypted" class="gallery-tile-lockmark" :title="L.encrypted" v-html="ICON.lock"></span>
             <div class="gallery-tile-name-row">
               <span v-if="row.t.isActive" class="gallery-tile-active-tag">{{ L.activeTag }}</span>

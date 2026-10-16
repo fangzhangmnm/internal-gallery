@@ -142,6 +142,12 @@ export declare type BadgeKind = "syncedBoth" | "dirtyBoth" | "cloudOnly" | "loca
 
 export declare function breadcrumb(folder: string): Crumb[];
 
+export declare interface CachedFacts {
+    token: string;
+    value: unknown;
+    at: number;
+}
+
 export declare interface CachedThumb {
     token: string;
     blob: Blob | null;
@@ -274,6 +280,8 @@ export declare function createByteBudget(budget: number): {
     spilling(): boolean;
 };
 
+export declare function createFactsCache(deps: FactsCacheDeps): FactsCache;
+
 export declare function createFirstFrameWatchdog(onStall: (info: {
     folder: string;
     elapsedMs: number;
@@ -321,7 +329,7 @@ export declare function createGalleryDataFace(deps: {
     listAside: (box: AsideKind) => Promise<AsideItem[]>;
 };
 
-export declare interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thumbs" | "store"> {
+export declare interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data" | "thumbs" | "store" | "facts" | "factsKinds"> {
     store: () => (VerbStore & DataFaceStore) | null;
     policy: DataFacePolicy & {
         /** 缩略图：不给 = 无缩略图。peek 从 store getPeek 读 app 域 entry（WeebPaint: Thumbnails/thumbnail.png）。
@@ -329,6 +337,15 @@ export declare interface CreateGalleryDeps extends Omit<GalleryScreenDeps, "data
         thumbs?: {
             kinds: readonly string[];
             fetch: (identifier: string, source: ThumbSource) => Promise<Blob | null>;
+            store?: ThumbStore;
+            dbName?: string;
+            galleryId?: () => string;
+        };
+        /** 0.8.0：卡片的「事实」（不开文件就想知道的一点东西：定稿了没 / 字数 / 进度…）。fetch 收身份、回一个 JSON 值（null = 确定没有，进缓存；抛 = 未知，不缓存）；
+         *  按身份 + 字节版本缓存在自己的 IDB（dbName；全删可再生），到了 ui.tileOverlayHtml / ui.tileAction 会拿到。本包不认识值的内容。 */
+        facts?: {
+            kinds: readonly string[];
+            fetch: (identifier: string, source: FactsSource) => Promise<unknown>;
             store?: ThumbStore;
             dbName?: string;
             galleryId?: () => string;
@@ -474,6 +491,36 @@ export declare function downloadStamp(now?: Date): string;
 
 declare function entries(): readonly DiagEntry[];
 
+export declare interface FactsCache {
+    read(identifier: string): Promise<CachedFacts | null>;
+    write(identifier: string, token: string, value: unknown): Promise<void>;
+    invalidate(identifier: string): Promise<void>;
+    onInvalidated(fn: (key: string) => void): () => void;
+    getOrFetch(identifier: string, token: string, source: FactsSource): Promise<{
+        value: unknown;
+        fromCache: boolean;
+    }>;
+    clear(): Promise<number>;
+    readonly stats: {
+        hits: number;
+        misses: number;
+        errors: number;
+    };
+}
+
+export declare interface FactsCacheDeps {
+    store: ThumbStore;
+    /** 真取（app 域）：JSON 值；null = 确定没有（缓存）；抛 = 未知（不缓存）。值必须能 structured-clone（进 IDB）。 */
+    fetch: (identifier: string, source: FactsSource) => Promise<unknown>;
+    keyOf: (identifier: string) => string;
+    report?: (err: unknown) => void;
+    now?: () => number;
+}
+
+export declare const factsKeyFor: (galleryId: string, identifier: string) => string;
+
+export declare type FactsSource = "local" | "cloud";
+
 /** 明文容器 → entry 原始字节 Blob；加密容器 → 密文 peek Blob(ENC_PEEK_MIME)。取不到 → 抛（caller 显占位）。source="cloud" 绝不静默落回本地。 */
 export declare function fetchZipEntryThumb(file: PeekableFile, source: "local" | "cloud", opts?: {
     zipEntry?: string;
@@ -529,7 +576,8 @@ export declare function fullTime(ts: number): string;
 export declare interface Gallery {
     handle: GalleryHandle;
     data: ReturnType<typeof createGalleryDataFace>;
-    thumbs: ThumbCache | null;
+    thumbs: ThumbCache | null; /** 0.8.0 */
+    facts: FactsCache | null;
 }
 
 /** 能力变更广播（window 事件；消费方自己重读 hasGallery()）。P3 起由换库事件驱动。 */
@@ -2078,9 +2126,10 @@ export declare type GalleryDataFace = ReturnType<typeof createGalleryDataFace>;
 /** 默认新建名 = yyyymmdd-hex4（家族惯例；两家 policy.defaultNewName 的默认实现）。禁「未命名」。 */
 export declare function galleryDefaultName(now?: Date): string;
 
-/** 图库对编辑器的全部要求（提案 §2 DocHost；WeebPaint session-state 的十处直调收成这一个端口）。 */
 export declare interface GalleryDocHost extends VerbDoc {
     open(item: GItem): Promise<void>;
+    /** 0.8.0：点了卡片上的动作钮（不打开那份）。facts = 这张卡的事实（policy.facts 取的；没取到 = null）。 */
+    tileAction?(item: GItem, facts: unknown): void | Promise<void>;
     /** 图片 tile 孪生语义（WeebPaint）：把图片字节转生成新文档；不实现 = 图片 tile 只显示不可开。 */
     importImageAsDoc?(file: File, opts: {
         nameOverride: string;
@@ -2192,7 +2241,10 @@ export declare interface GalleryScreenDeps {
          *  包只给一个铺满封面、不吃指针事件的槽（`.gallery-tile-overlay`，紧跟在缩略图元素后面，宿主 CSS 可以用相邻选择器区分底下是图还是占位），
          *  里面画什么、怎么排版全归宿主；包不因为有没有这一层改变任何别的行为。列表布局不画。不给 / 返回空 = 不画。
          *  0.6.4：第二参 = 卡片信息（WXHW 2026-09-30 user「左边是 yyyymmdd，右边是 size」要在封面上印大小），可选、向后兼容。 */
-        tileOverlayHtml?: (name: string, info?: TileInfo) => string | undefined;
+        tileOverlayHtml?: (name: string, info?: TileInfo, facts?: unknown) => string | undefined;
+        /** 0.8.0：卡片右下角一粒动作钮（有正式的位置和指针事件，不盖同步徽章；点了走 doc.tileAction，不打开那份）。facts = policy.facts 取到的事实（没取到 = null）；
+         *  事实到了会重算（响应式）。文件卡才有；搁置区 / 列表布局不画。 */
+        tileAction?: (name: string, info: TileInfo, facts: unknown) => TileAction | null;
     };
     /** 卡片比例 = 宽 ÷ 高，一个数。不给 = 1（方图，WeebPaint 默认）；别的比例宿主自己给（WXHW 书库 1/√2、JRB 2/3）。竖版（< 1）自动用更密的排法：卡片窄一档、窄屏一排三张。
      *  （0.2.0–0.6.x 是闭集 "1/1" | "2/3"；user 2026-10-01「改成只支持默认1:1和自定义可以吗」——包不该认识某一个具体的书封比例。）
@@ -2208,6 +2260,9 @@ export declare interface GalleryScreenDeps {
      *  没有缩略图的种类不去尾读、加密件不显锁图标（WXHW 的 txt 稿）。 */
     thumbKinds?: readonly string[];
     thumbs?: ThumbCache;
+    /** 0.8.0：卡片的「事实」（createGallery 从 policy.facts 填）：哪几个种类取、缓存在哪。 */
+    factsKinds?: readonly string[];
+    facts?: FactsCache;
     imageThumbs?: {
         getOrFetch(path: string, token: string): Promise<Blob>;
     };
@@ -2633,6 +2688,14 @@ export declare function thumbTargetSize(w: number, h: number, max: number): {
     w: number;
     h: number;
 };
+
+/** 图库对编辑器的全部要求（提案 §2 DocHost；WeebPaint session-state 的十处直调收成这一个端口）。 */
+/** 0.8.0：卡片右下角那粒动作钮长什么样（宿主按卡片信息 + 事实决定）；null = 这张卡没有钮。state：ready = 亮；none = 不画（和 null 一样，留给「事实已到、确定没有」）；unknown = 淡（事实还没到）。 */
+export declare interface TileAction {
+    icon: string;
+    title: string;
+    state?: "ready" | "none" | "unknown";
+}
 
 export declare function tileFor(item: GItem, opts: {
     signedIn: boolean;

@@ -28,6 +28,7 @@ export * from "./core/thumbs/thumb-cache.ts";
 export * from "./core/thumbs/peek-thumb.ts";
 export * from "./core/thumbs/png-text.ts";
 export * from "./core/thumbs/make-thumb.ts";
+export * from "./core/facts/facts-cache.ts";   // 0.8.0：卡片的「事实」缓存
 export * from "./ui/store-ui.ts";
 export * from "./ui/gallery-screen.ts";
 export * from "./ui/shell-flows.ts";
