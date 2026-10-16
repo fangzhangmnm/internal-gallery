@@ -48,7 +48,8 @@ export function storeUIFor(d: StoreUIDeps): StoreUI {
         ? await d.sheets.lockSyncGate<"cancel" | "takeCloud">({ title: t("cf.cloudNewerTitle"), message: t("cf.body.open", { name: n }), note: t("cf.note.keptSafe"), showSpinner: false,
             actions: [{ label: t("cf.act.openLocal"), value: "cancel", primary: true }, { label: t("cf.act.cloudWins"), value: "takeCloud" }] })
         : await d.sheets.lockSyncGate<"keepMine" | "takeCloud" | "cancel">({ title: t("cf.cloudNewerTitle"), message: t("cf.body.push", { name: n }), note: t("cf.note.keptSafe"), showSpinner: false,
-            actions: [{ label: t("cf.act.localWins"), value: "keepMine", primary: true }, { label: t("cf.act.cloudWins"), value: "takeCloud" }, { label: t("common.cancel"), value: "cancel" }] });
+            // 0.7.1：主按钮 = 云端覆盖本地（user 2026-10-16「默认云端才是 authority」「一切对齐」；此前主按钮是本地覆盖云端，挂机醒来顺手一点就把云端的新改动盖进备份箱）
+            actions: [{ label: t("cf.act.cloudWins"), value: "takeCloud", primary: true }, { label: t("cf.act.localWins"), value: "keepMine" }, { label: t("common.cancel"), value: "cancel" }] });
       return choice ?? "cancel";
     },
     reportError: (err, level) => {
