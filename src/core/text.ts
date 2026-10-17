@@ -277,7 +277,7 @@ export const GALLERY_TEXT = {
   "gv.badge.localOnly": { zh: "仅本地（未上传云端）", en: "Local only (not uploaded)", ja: "ローカルのみ（未アップロード）" },
   "gv.badge.localPlain": { zh: "本地", en: "Local", ja: "ローカル" },
   "gv.badge.newerOnCloud": { zh: "云端有新版本 —— 打开会自动更新到云端版", en: "A newer version exists in the cloud — opening will update to it", ja: "クラウドに新しいバージョンがあります——開くと自動的に更新されます" },
-  "gv.badge.pendingGone": { zh: "云端副本已消失，本地干净副本待处理 —— 可「重新上传」推回云端，或「删除」；宽限期后自动移入回收站", en: "Cloud copy is gone; clean local copy pending — “re-upload” to push it back, or “delete”; auto-trashed after the grace period", ja: "クラウド側が消失、ローカルのクリーンな複製が保留中——「再アップロード」か「削除」を。猶予期間後は自動でゴミ箱へ" },
+  "gv.badge.pendingGone": { zh: "云端那份没了，这台还留着一份干净的副本 —— 「处理…」里选：云端覆盖本地（这份进回收站）或本地覆盖云端（传回去）；宽限期后自动移入回收站", en: "Cloud copy is gone; this device still holds a clean copy — use “Resolve…”: cloud overwrites local (to trash) or local overwrites cloud (upload again); auto-trashed after the grace period", ja: "クラウド側は消え、この端末にクリーンな複製が残っています——「処理…」で：クラウドでローカルを上書き（ゴミ箱へ）／ローカルでクラウドを上書き（再アップロード）。猶予期間後は自動でゴミ箱へ" },
   "gv.badge.syncedBoth": { zh: "本地+云端（已同步）", en: "Local+cloud (synced)", ja: "ローカル+クラウド（同期済み）" },
   "gv.rootDir": { zh: "/ 根目录", en: "/ Root", ja: "/ ルート" },
   "gv.src.both": { zh: "本地+云端", en: "Local+cloud", ja: "ローカル+クラウド" },

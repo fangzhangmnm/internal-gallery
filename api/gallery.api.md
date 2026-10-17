@@ -2134,9 +2134,9 @@ export const GALLERY_TEXT: {
         readonly ja: "クラウドに新しいバージョンがあります——開くと自動的に更新されます";
     };
     readonly "gv.badge.pendingGone": {
-        readonly zh: "云端副本已消失，本地干净副本待处理 —— 可「重新上传」推回云端，或「删除」；宽限期后自动移入回收站";
-        readonly en: "Cloud copy is gone; clean local copy pending — “re-upload” to push it back, or “delete”; auto-trashed after the grace period";
-        readonly ja: "クラウド側が消失、ローカルのクリーンな複製が保留中——「再アップロード」か「削除」を。猶予期間後は自動でゴミ箱へ";
+        readonly zh: "云端那份没了，这台还留着一份干净的副本 —— 「处理…」里选：云端覆盖本地（这份进回收站）或本地覆盖云端（传回去）；宽限期后自动移入回收站";
+        readonly en: "Cloud copy is gone; this device still holds a clean copy — use “Resolve…”: cloud overwrites local (to trash) or local overwrites cloud (upload again); auto-trashed after the grace period";
+        readonly ja: "クラウド側は消え、この端末にクリーンな複製が残っています——「処理…」で：クラウドでローカルを上書き（ゴミ箱へ）／ローカルでクラウドを上書き（再アップロード）。猶予期間後は自動でゴミ箱へ";
     };
     readonly "gv.badge.syncedBoth": {
         readonly zh: "本地+云端（已同步）";

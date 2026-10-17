@@ -552,8 +552,9 @@ const GALLERY_TEMPLATE = `
                 <button type="button" class="danger" @click="del(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.discardToTrash }}</span></button>
               </template>
               <template v-else-if="row.t.pendingGone">
+                <!-- 0.8.3：没同步好的行只有「处理…」（库弹面三选一）。这里以前还放着「送到回收站」= 双向删除，和 KudsRocket 2026-10-14 00:54 丢存档同一个坑（user「冲突的时候不要放删除按钮」）；
+                     「这份不要了」= 面里选云端覆盖本地，store 0.18.5 起干净副本也走这张面。 -->
                 <button type="button" @click="resolve(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cloud-pending"/></svg><span>{{ L.resolve }}</span></button>
-                <button type="button" class="danger" @click="del(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.toTrash }}</span></button>
               </template>
               <template v-else>
                 <button type="button" @click="rename(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#rename"/></svg><span>{{ L.rename }}</span></button>
