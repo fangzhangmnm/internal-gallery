@@ -1,6 +1,6 @@
 {
   "name": "@internal/gallery",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "PWA 家族图库库：文件管理 + 多库路由 + card view 一屏（WeebPaint 行为 = spec；DocHost 端口切开 gallery↔editor 双向边）",
   "type": "module",
   "license": "MIT",
@@ -31,8 +31,5 @@
   "peerDependencies": {
     "@internal/store": ">=0.16.1",
     "@internal/workbench-elements": ">=0.1.2"
-  },
-  "dependencies": {
-    "@internal/store": "file:./vendor-pkgs/internal-store-0.18.4.tgz"
   }
 }
