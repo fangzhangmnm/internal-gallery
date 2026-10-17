@@ -1,4 +1,4 @@
-// 图库文件管理动词（无 DOM）——WET 自 WeebPaint src/gallery/gallery.ts 的 intents 段（rename/move/copy/reupload/del/
+// 图库文件管理动词（无 DOM）——WET 自 WeebPaint src/gallery/gallery.ts 的 intents 段（rename/move/copy/resolve/del/
 //   deleteImage/folderDelete/asideRestore/asidePurge/emptyAside/encrypt/decrypt/unlock），2026-09-09 抽出成 headless 模块。
 // 红线兜底随行（提案 §5）：删=回收站且诚实读 DelResult；改名失败保输入循环重试、错误写进重弹的输入框标题；失败不报成功；
 //   移动只给「上级 + 可见子夹」绝不 poll 全树；复制加密源原样搬密文；清空回收站部分失败必说。屏幕层只负责调 + reload。
@@ -26,15 +26,19 @@ export interface VerbDoc {
   renameActive(): Promise<string | null>;
   /** 当前打开的那份被图库挪了文件夹 → 告诉编辑器新身份（0.6.0 起叫 setIdentifier，原 setName）。 */
   setIdentifier(identifier: string): void;
+  /** ⚠ 0.7.2 起图库不再调它当「推送到云端」按钮（方向动词不在词汇表上）；留给宿主自己的保存路径用。 */
   push(item: GItem): Promise<void>;
   unload(item: GItem): Promise<void>;
   exit(): Promise<void>;
+  /** 0.7.2：「处理…」处理的是正在打开的那份且换了世界线 / 进了回收站 → 让宿主重开（GalleryDocHost 必有 open；VerbDoc 层可选）。 */
+  open?(item: GItem): Promise<void>;
   dropCheckpoint(identifier: string): Promise<void> | void;
 }
 export interface VerbFile {
   tryMove(to: string): Promise<{ ok: true } | { ok: false; where: "local" | "cloud" }>;
   delete(): Promise<{ status: string; queuedCloudDelete?: boolean }>;
-  reupload(): Promise<{ status: string }>;
+  /** 0.7.2：store 0.18 的 file.resolve()——库问人三选一（云端覆盖本地 / 本地覆盖云端 / 取消），图库「处理…」唯一的后端。 */
+  resolve(): Promise<{ status: string; reason?: string }>;
   getEncryptedBlob(): Promise<Blob | null>;
   open(): Promise<Blob | null>;
   save(bytes: Blob, opts: { tryPush: boolean }): Promise<unknown>;
@@ -159,7 +163,6 @@ export function createGalleryVerbs(d: VerbDeps) {
     });
   }
 
-  async function push(item: GItem): Promise<void> { await d.doc.push(item); }
   async function unload(item: GItem): Promise<void> { await d.doc.unload(item); }
   /** 0.3.0（JRB）：纯云端件「留一份离线」——不打开文档，只囤字节（读者在 wifi 下把一晚要读的先囤好）。与 pullLocal（= 打开即缓存）分工。失败走 status 不抛。 */
   async function keepOffline(item: GItem): Promise<void> {
@@ -169,17 +172,22 @@ export function createGalleryVerbs(d: VerbDeps) {
     });
   }
 
-  async function reupload(item: GItem): Promise<void> {
-    await d.host.busy(t("gal.busy.reupload"), async () => {
+  /** 「处理…」（0.7.2）——这份没同步好（没传 / 冲突 / 云端没了 / 从没传过）的**唯一**动作：交给库的 `file.resolve()`，由库问人三选一
+   *  （云端覆盖本地 / 本地覆盖云端 / 取消）。图库不再有「推送到云端」「重新上传」这类替人定方向的按钮（user 2026-10-16「这个动词一开始就不合法，
+   *  不在词汇表上」「这个按钮为什么能存在是更大的安全问题」）。正在打开的那份：先让编辑器把内存里的落盘（d.doc.exit = flushLocal），
+   *  处理完若换了世界线 / 进了回收站，让宿主重开（d.doc.open）。 */
+  async function resolve(item: GItem): Promise<void> {
+    const isActive = item.identifier === d.host.activeIdentifier();
+    await d.host.busy(t("gal.busy.resolve", { name: item.stem }), async () => {
       try {
-        const r = await docFile(item.identifier).reupload();
-        if (r.status === "no-local") { d.host.status(t("gal.st.reuploadFail", { e: "no-local" }), true); return; }
-        d.host.status(t("gal.st.reuploaded", { name: item.stem }));
-      } catch (e: unknown) {
-        const msg = errMsg(e);
-        if ((e as { name?: string })?.name === "CloudNameCollisionError" || /collision|已存在|exists/i.test(msg)) d.host.status(t("gal.st.reuploadConflict", { name: item.stem }), true);
-        else d.host.status(t("gal.st.reuploadFail", { e: msg }), true);
-      }
+        if (isActive) await d.doc.exit();
+        const r = await docFile(item.identifier).resolve();
+        const key = r.status === "took-cloud" ? "gal.st.resolve.tookCloud" : r.status === "pushed" ? "gal.st.resolve.pushed" : r.status === "trashed" ? "gal.st.resolve.trashed"
+          : r.status === "cancelled" ? "gal.st.resolve.cancelled" : r.status === "clean" ? "gal.st.resolve.clean" : r.status === "offline" ? "gal.st.resolve.offline" : "gal.st.resolve.unresolved";
+        const bad = key === "gal.st.resolve.offline" || key === "gal.st.resolve.unresolved";
+        d.host.status(t(key, { name: item.stem, e: r.reason ?? r.status }), bad);
+        if (isActive && (r.status === "took-cloud" || r.status === "trashed") && d.doc.open) await d.doc.open(item);
+      } catch (e: unknown) { d.host.status(t("gal.st.resolve.unresolved", { name: item.stem, e: errMsg(e) }), true); }
     });
   }
 
@@ -307,6 +315,6 @@ export function createGalleryVerbs(d: VerbDeps) {
     return ok;
   }
 
-  return { rename, move, moveTargets, copy, push, unload, keepOffline, reupload, del, deleteImage, folderDelete, asideRestore, asidePurge, emptyAside, encryptItem, decryptItem, unlock, whereLabel };
+  return { rename, move, moveTargets, copy, resolve, unload, keepOffline, del, deleteImage, folderDelete, asideRestore, asidePurge, emptyAside, encryptItem, decryptItem, unlock, whereLabel };
 }
 export type GalleryVerbs = ReturnType<typeof createGalleryVerbs>;

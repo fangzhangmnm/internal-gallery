@@ -417,8 +417,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const rename = wrap((item: GItem) => verbs.rename(item));
       const move = wrap((item: GItem) => verbs.move(item, { folder: folder.value, folderNames: data.folderNames }));
       const copy = wrap((item: GItem) => verbs.copy(item, data.files.map((it) => it.identifier)));
-      const push = wrap((item: GItem) => verbs.push(item));
-      const reupload = wrap((item: GItem) => verbs.reupload(item));
+      const resolve = wrap((item: GItem) => verbs.resolve(item));   // 0.7.2：没同步好的唯一动作（库问人三选一）
       const unload = wrap((item: GItem) => verbs.unload(item));
       const keepOffline = wrap((item: GItem) => verbs.keepOffline(item));
       const del = wrap((item: GItem) => verbs.del(item));
@@ -462,9 +461,9 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         delEmptyFolder: t("gal.delEmptyFolder"), delFolderNonEmpty: t("gal.delFolderNonEmpty"), encrypted: t("enc.locked.aria"),
         divergedNote: t("gal.divergedNote"), renameKeep: t("gal.renameKeep"), discardToTrash: t("gal.discardToTrash"),
         rename: t("gal.rename"), moveTo: t("gal.moveTo"), copy: t("gal.copy"), pullLocal: t("gal.pullLocal"),
-        pushCloud: t("gal.pushCloud"), unloadLocal: t("gal.unloadLocal"), encrypt: t("menu.encrypt"), decrypt: t("menu.decrypt"),
+        resolve: t("gal.resolve"), unloadLocal: t("gal.unloadLocal"), encrypt: t("menu.encrypt"), decrypt: t("menu.decrypt"),
         toTrash: t("gal.toTrash"), restore: t("gal.restore"), purge: t("gal.purge"),
-        reupload: t("gal.reupload"), imageFile: t("gal.imageFile"), otherFile: t("gal.otherFile"),
+        imageFile: t("gal.imageFile"), otherFile: t("gal.otherFile"),
         retry: t("gal.retry"), openDiag: t("gal.openDiag"), reload: t("gal.reload"),
         keepOffline: t("gal.keepOffline"), unread: t("gal.marker.unread"),
       };
@@ -476,7 +475,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         view, folder, loading, stalled, retry, openDiag, reloadApp, openMenu, isEmpty, emptyText, L, phHtml,
         folderTiles, fileTiles, imageTiles, otherTiles, asideTiles, crumbs, badgeIcon2,
         badgeIcon, fmtMeta, humanTime, fullTime, ICON, toggleMenu, menuMount: el, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
-        openTile, tileAction, openImageTile, deleteImage, rename, move, copy, push, reupload, unload, keepOffline, del, folderDelete, asideRestore, asidePurge, emptyAside,
+        openTile, tileAction, openImageTile, deleteImage, rename, move, copy, resolve, unload, keepOffline, del, folderDelete, asideRestore, asidePurge, emptyAside,
         encryptItem, decryptItem, onUnlock, requestUnlock, hasEncryption: !!enc,
         reload, setView: (v: GalleryView) => { view.value = v; void reload(); },
       };
@@ -553,7 +552,7 @@ const GALLERY_TEMPLATE = `
                 <button type="button" class="danger" @click="del(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.discardToTrash }}</span></button>
               </template>
               <template v-else-if="row.t.pendingGone">
-                <button type="button" @click="reupload(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#upload"/></svg><span>{{ L.reupload }}</span></button>
+                <button type="button" @click="resolve(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cloud-pending"/></svg><span>{{ L.resolve }}</span></button>
                 <button type="button" class="danger" @click="del(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.toTrash }}</span></button>
               </template>
               <template v-else>
@@ -562,8 +561,7 @@ const GALLERY_TEMPLATE = `
                 <button type="button" @click="copy(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#copy"/></svg><span>{{ L.copy }}</span></button>
                 <button v-if="row.t.badge==='cloudOnly'" type="button" @click="openTile(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#download"/></svg><span>{{ L.pullLocal }}</span></button>
                 <button v-if="row.t.badge==='cloudOnly'" type="button" @click="keepOffline(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#local-cache"/></svg><span>{{ L.keepOffline }}</span></button>
-                <button v-if="row.t.badge==='localOnly' || row.t.badge==='float'" type="button" @click="push(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cloud-upload"/></svg><span>{{ L.pushCloud }}</span></button>
-                <button v-if="row.t.badge==='dirtyBoth' || row.t.badge==='conflictBoth'" type="button" @click="push(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cloud-upload"/></svg><span>{{ L.pushCloud }}</span></button>
+                <button v-if="row.t.badge==='localOnly' || row.t.badge==='float' || row.t.badge==='dirtyBoth' || row.t.badge==='conflictBoth'" type="button" @click="resolve(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cloud-pending"/></svg><span>{{ L.resolve }}</span></button>
                 <button v-if="row.t.hasLocal && row.t.hasCloud" type="button" @click="unload(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#unload-local-cache"/></svg><span>{{ L.unloadLocal }}</span></button>
                 <button v-if="hasEncryption && row.t.hasLocal && !row.t.encrypted" type="button" @click="encryptItem(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#lock"/></svg><span>{{ L.encrypt }}</span></button>
                 <button v-if="hasEncryption && row.t.hasLocal && row.t.encrypted" type="button" @click="decryptItem(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#unlock"/></svg><span>{{ L.decrypt }}</span></button>

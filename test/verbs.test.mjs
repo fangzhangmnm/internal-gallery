@@ -10,7 +10,7 @@ function mk({ file = {}, files = {}, inputs = [], confirms = [], active = null, 
   const fileObj = (name, opts) => { calls.push(["file", name, opts]); return {
     tryMove: async (to) => { calls.push(["tryMove", name, to]); return file.tryMove ? file.tryMove(to) : { ok: true }; },
     delete: async () => file.delete ? file.delete() : { status: "ok", queuedCloudDelete: true },
-    reupload: async () => file.reupload ? file.reupload() : { status: "ok" },
+    resolve: async () => file.resolve ? file.resolve() : { status: "pushed" },
     getEncryptedBlob: async () => file.enc ?? null, open: async () => file.plain ?? null,
     save: async (b, o) => { calls.push(["save", name, opts, o]); },
     encrypt: async () => file.encrypt ? file.encrypt() : { status: "ok" }, decrypt: async () => ({ status: "ok" }),
@@ -104,7 +104,7 @@ describe("verbs · move（目标只有上级 + 可见子夹，根置顶，绝不
   });
 });
 
-describe("verbs · copy / reupload", () => {
+describe("verbs · copy / resolve", () => {
   it("copy：加密源原样搬密文（不 open）；目标名同夹「副本」按当前夹去重；新身份 mode:new，tryPush 跟登录+在线", async () => {
     const enc = new Blob(["CIPHER"]);
     const r = mk({ file: { enc, plain: new Blob(["PLAIN"]) } });
@@ -113,10 +113,13 @@ describe("verbs · copy / reupload", () => {
     eq(save[1], `夹/猫 ${t("name.copySuffix")}2.ora`); eq(save[2].mode, "new"); eq(save[3].tryPush, true);
     eq(r.statuses.pop()[1], false);
   });
-  it("reupload：no-local → 错误；撞名异常 → 冲突文案；ok → 已重传", async () => {
-    let r = mk({ file: { reupload: async () => ({ status: "no-local" }) } }); await r.verbs.reupload(item("a.ora")); eq(r.statuses.pop()[1], true);
-    r = mk({ file: { reupload: async () => { const e = new Error("x"); e.name = "CloudNameCollisionError"; throw e; } } }); await r.verbs.reupload(item("a.ora")); eq(r.statuses.pop()[0], t("gal.st.reuploadConflict", { name: "a" }));
-    r = mk(); await r.verbs.reupload(item("a.ora")); eq(r.statuses.pop()[0], t("gal.st.reuploaded", { name: "a" }));
+  it("resolve（处理…）：库的终态逐一落成人话；offline / unresolved 算错误；正在打开的那份先落盘、换了世界线就重开", async () => {
+    let r = mk({ file: { resolve: async () => ({ status: "took-cloud" }) } }); await r.verbs.resolve(item("a.ora")); eq(r.statuses.pop()[0], t("gal.st.resolve.tookCloud", { name: "a", e: "took-cloud" }));
+    r = mk({ file: { resolve: async () => ({ status: "trashed" }) } }); await r.verbs.resolve(item("a.ora")); eq(r.statuses.pop()[0], t("gal.st.resolve.trashed", { name: "a", e: "trashed" }));
+    r = mk({ file: { resolve: async () => ({ status: "offline" }) } }); await r.verbs.resolve(item("a.ora")); eq(r.statuses.pop()[1], true);
+    r = mk({ file: { resolve: async () => ({ status: "unresolved", reason: "cloud-vanished" }) } }); await r.verbs.resolve(item("a.ora")); eq(r.statuses.pop()[0], t("gal.st.resolve.unresolved", { name: "a", e: "cloud-vanished" }));
+    r = mk(); await r.verbs.resolve(item("a.ora")); eq(r.statuses.pop()[0], t("gal.st.resolve.pushed", { name: "a", e: "pushed" }));
+    eq(typeof r.verbs.reupload, "undefined", "「重新上传」动词已不存在"); eq(typeof r.verbs.push, "undefined", "「推送到云端」动词已不存在");
   });
 });
 

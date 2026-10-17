@@ -487,10 +487,9 @@ export function createGalleryVerbs(d: VerbDeps): {
         folderNames: string[];
     }) => string[];
     copy: (item: GItem, currentIdentifiers: readonly string[]) => Promise<void>;
-    push: (item: GItem) => Promise<void>;
+    resolve: (item: GItem) => Promise<void>;
     unload: (item: GItem) => Promise<void>;
     keepOffline: (item: GItem) => Promise<void>;
-    reupload: (item: GItem) => Promise<void>;
     del: (item: GItem) => Promise<void>;
     deleteImage: (img: {
         identifier: string;
@@ -890,6 +889,26 @@ export const GALLERY_TEXT: {
         readonly en: "Cloud: {who} (tap to open account menu)";
         readonly ja: "クラウド：{who}（アカウントメニューを開く）";
     };
+    readonly "cf.cloudGoneTitle": {
+        readonly zh: "云端没有这份";
+        readonly en: "Not in the cloud";
+        readonly ja: "クラウドにありません";
+    };
+    readonly "cf.body.absent": {
+        readonly zh: "「{name}」在云端已经不在了（别的设备删了，或移进了回收站），本机还有一份没上传的。云端覆盖本地 = 跟着云端，本机这份移到回收站；本地覆盖云端 = 把本机的传回去。";
+        readonly en: "“{name}” is no longer in the cloud (deleted or trashed on another device); this device still has an un-uploaded copy. Cloud overwrites local = follow the cloud, this copy goes to the trash; Local overwrites cloud = upload it back.";
+        readonly ja: "「{name}」はクラウドから消えています（別の端末で削除またはごみ箱へ）。この端末には未アップロードの版があります。クラウドでローカルを上書き = クラウドに合わせてごみ箱へ；ローカルでクラウドを上書き = 再アップロード。";
+    };
+    readonly "cf.body.never": {
+        readonly zh: "「{name}」从没传到云端过。本地覆盖云端 = 第一次上传；云端覆盖本地 = 云端没有这份，本机这份移到回收站。";
+        readonly en: "“{name}” has never been uploaded. Local overwrites cloud = upload it for the first time; Cloud overwrites local = the cloud has none, so this copy goes to the trash.";
+        readonly ja: "「{name}」は一度もアップロードされていません。ローカルでクラウドを上書き = 初回アップロード；クラウドでローカルを上書き = クラウドに無いのでごみ箱へ。";
+    };
+    readonly "cf.body.unchanged": {
+        readonly zh: "「{name}」云端还是上次同步的那一版，本机有新改动没上传。";
+        readonly en: "“{name}” in the cloud is still the last synced version; this device has new changes not uploaded yet.";
+        readonly ja: "「{name}」のクラウド版は前回同期のまま、この端末に未アップロードの変更があります。";
+    };
     readonly "cf.cloudNewerTitle": {
         readonly zh: "云端有新版本";
         readonly en: "A newer version exists in the cloud";
@@ -1064,11 +1083,6 @@ export const GALLERY_TEXT: {
         readonly zh: "正在恢复 {name}…";
         readonly en: "Restoring {name}…";
         readonly ja: "復元中 {name}…";
-    };
-    readonly "gal.busy.reupload": {
-        readonly zh: "重新上传中…";
-        readonly en: "Re-uploading…";
-        readonly ja: "再アップロード中…";
     };
     readonly "gal.copy": {
         readonly zh: "创建副本";
@@ -1330,11 +1344,6 @@ export const GALLERY_TEXT: {
         readonly en: "Delete forever";
         readonly ja: "完全に削除";
     };
-    readonly "gal.pushCloud": {
-        readonly zh: "推送到云端";
-        readonly en: "Push to cloud";
-        readonly ja: "クラウドに送信";
-    };
     readonly "gal.reload": {
         readonly zh: "重新载入应用";
         readonly en: "Reload app";
@@ -1360,10 +1369,50 @@ export const GALLERY_TEXT: {
         readonly en: "Retry";
         readonly ja: "再試行";
     };
-    readonly "gal.reupload": {
-        readonly zh: "重新上传";
-        readonly en: "Re-upload";
-        readonly ja: "再アップロード";
+    readonly "gal.resolve": {
+        readonly zh: "处理…";
+        readonly en: "Resolve…";
+        readonly ja: "処理…";
+    };
+    readonly "gal.busy.resolve": {
+        readonly zh: "正在处理 {name}…";
+        readonly en: "Resolving {name}…";
+        readonly ja: "{name} を処理中…";
+    };
+    readonly "gal.st.resolve.tookCloud": {
+        readonly zh: "云端覆盖了本地：{name}（这台的那份进了备份箱）";
+        readonly en: "Cloud overwrote local: {name} (this device's copy went to the backup bin)";
+        readonly ja: "クラウドでローカルを上書き：{name}（この端末の版はバックアップへ）";
+    };
+    readonly "gal.st.resolve.pushed": {
+        readonly zh: "本地覆盖了云端：{name}";
+        readonly en: "Local overwrote cloud: {name}";
+        readonly ja: "ローカルでクラウドを上書き：{name}";
+    };
+    readonly "gal.st.resolve.trashed": {
+        readonly zh: "跟了云端：云端那份已经没了，这台的 {name} 移到回收站（能恢复）";
+        readonly en: "Followed the cloud: it is gone there, so {name} on this device went to the trash (recoverable)";
+        readonly ja: "クラウドに合わせました：クラウドに無いので {name} はごみ箱へ（復元可）";
+    };
+    readonly "gal.st.resolve.cancelled": {
+        readonly zh: "这次没动：{name}";
+        readonly en: "Nothing changed: {name}";
+        readonly ja: "変更なし：{name}";
+    };
+    readonly "gal.st.resolve.clean": {
+        readonly zh: "{name} 没有要处理的改动";
+        readonly en: "{name} has nothing to resolve";
+        readonly ja: "{name} に処理すべき変更はありません";
+    };
+    readonly "gal.st.resolve.offline": {
+        readonly zh: "现在离线，连不上云端：{name}";
+        readonly en: "Offline, cannot reach the cloud: {name}";
+        readonly ja: "オフラインのためクラウドに接続できません：{name}";
+    };
+    readonly "gal.st.resolve.unresolved": {
+        readonly zh: "没处理成：{name}（{e}）";
+        readonly en: "Could not resolve: {name} ({e})";
+        readonly ja: "処理できませんでした：{name}（{e}）";
     };
     readonly "gal.root": {
         readonly zh: "根目录";
@@ -1624,21 +1673,6 @@ export const GALLERY_TEXT: {
         readonly zh: "已恢复：{name}（原名 {orig} 已被占用）";
         readonly en: "Restored: {name} (original name {orig} was taken)";
         readonly ja: "復元：{name}（元の名前 {orig} は使用中）";
-    };
-    readonly "gal.st.reuploadConflict": {
-        readonly zh: "云端已存在同名文件，未覆盖：{name}（请改名或从云端拉取）";
-        readonly en: "A file with that name already exists on cloud; not overwritten: {name}";
-        readonly ja: "クラウドに同名ファイルが既に存在します。上書きしません：{name}";
-    };
-    readonly "gal.st.reuploadFail": {
-        readonly zh: "重新上传失败：{e}";
-        readonly en: "Re-upload failed: {e}";
-        readonly ja: "再アップロード失敗：{e}";
-    };
-    readonly "gal.st.reuploaded": {
-        readonly zh: "已重新上传：{name}";
-        readonly en: "Re-uploaded: {name}";
-        readonly ja: "再アップロード完了：{name}";
     };
     readonly "gal.st.unlocked": {
         readonly zh: "已解锁加密作品（密码只在内存，关页即忘）";
@@ -2258,6 +2292,11 @@ export const GALLERY_TEXT: {
         readonly zh: "重新上传…";
         readonly en: "Re-uploading…";
         readonly ja: "再アップロード中…";
+    };
+    readonly "st.fileUploading": {
+        readonly zh: "正在上传…";
+        readonly en: "Uploading…";
+        readonly ja: "アップロード中…";
     };
     readonly "st.folderCreating": {
         readonly zh: "新建文件夹…";
@@ -3062,7 +3101,7 @@ export interface VerbDoc {
     dropCheckpoint(identifier: string): Promise<void> | void;
     // (undocumented)
     exit(): Promise<void>;
-    // (undocumented)
+    open?(item: GItem): Promise<void>;
     push(item: GItem): Promise<void>;
     renameActive(): Promise<string | null>;
     setIdentifier(identifier: string): void;
@@ -3110,9 +3149,9 @@ export interface VerbFile {
     }): Promise<void>;
     // (undocumented)
     open(): Promise<Blob | null>;
-    // (undocumented)
-    reupload(): Promise<{
+    resolve(): Promise<{
         status: string;
+        reason?: string;
     }>;
     // (undocumented)
     save(bytes: Blob, opts: {

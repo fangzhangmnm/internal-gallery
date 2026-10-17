@@ -25,7 +25,7 @@ const STORE_TEXT_KEYS: Record<StoreTextKey, GalleryTextKey> = {
   "sync.pushing": "st.syncPushing", "file.renaming": "st.fileRenaming", "file.pulling": "st.filePulling", "cloud.checking": "st.cloudChecking",
   "file.deleting": "st.fileDeleting", "trash.restoring": "st.trashRestoring", "trash.purging": "st.trashPurging", "trash.emptyTrash": "st.trashEmptyTrash",
   "trash.emptyBackups": "st.trashEmptyBackups", "file.encrypting": "st.fileEncrypting", "file.decrypting": "st.fileDecrypting", "file.rekeying": "st.fileRekeying",
-  "file.reuploading": "st.fileReuploading", "folder.creating": "st.folderCreating", "folder.deleting": "st.folderDeleting",
+  "file.uploading": "st.fileUploading", "file.reuploading": "st.fileReuploading", "folder.creating": "st.folderCreating", "folder.deleting": "st.folderDeleting",
 };
 const QUIET_KEYS = new Set<StoreTextKey>(["sync.pushing", "file.renaming"]);
 
@@ -42,12 +42,17 @@ export function storeUIFor(d: StoreUIDeps): StoreUI {
   return {
     busy: (label, fn, key) => (key && QUIET_KEYS.has(key) ? quietBusy(label, fn) : d.busy(label, fn)),
     text: (key, params) => d.text?.(key, params) ?? (STORE_TEXT_KEYS[key] ? t(STORE_TEXT_KEYS[key], params as Record<string, string | number>) : undefined),
-    resolveConflict: async ({ name, occasion }) => {
+    resolveConflict: async ({ name, occasion, cloudState }) => {
       const n = bare(name);
+      // 0.7.2：按云端那一侧的状态换说法（store 0.18.2 cloudState）；三个词不变、主按钮 = 云端覆盖本地
+      const gone = cloudState === "absent" || cloudState === "never";
+      const pushTitle = gone ? t("cf.cloudGoneTitle") : t("cf.cloudNewerTitle");
+      const pushBody = cloudState === "absent" ? t("cf.body.absent", { name: n }) : cloudState === "never" ? t("cf.body.never", { name: n })
+        : cloudState === "unchanged" ? t("cf.body.unchanged", { name: n }) : t("cf.body.push", { name: n });
       const choice = occasion === "open"
         ? await d.sheets.lockSyncGate<"cancel" | "takeCloud">({ title: t("cf.cloudNewerTitle"), message: t("cf.body.open", { name: n }), note: t("cf.note.keptSafe"), showSpinner: false,
             actions: [{ label: t("cf.act.openLocal"), value: "cancel", primary: true }, { label: t("cf.act.cloudWins"), value: "takeCloud" }] })
-        : await d.sheets.lockSyncGate<"keepMine" | "takeCloud" | "cancel">({ title: t("cf.cloudNewerTitle"), message: t("cf.body.push", { name: n }), note: t("cf.note.keptSafe"), showSpinner: false,
+        : await d.sheets.lockSyncGate<"keepMine" | "takeCloud" | "cancel">({ title: pushTitle, message: pushBody, note: t("cf.note.keptSafe"), showSpinner: false,
             // 0.7.1：主按钮 = 云端覆盖本地（user 2026-10-16「默认云端才是 authority」「一切对齐」；此前主按钮是本地覆盖云端，挂机醒来顺手一点就把云端的新改动盖进备份箱）
             actions: [{ label: t("cf.act.cloudWins"), value: "takeCloud", primary: true }, { label: t("cf.act.localWins"), value: "keepMine" }, { label: t("common.cancel"), value: "cancel" }] });
       return choice ?? "cancel";
