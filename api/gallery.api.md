@@ -3132,11 +3132,6 @@ export interface VerbFile {
         status: string;
     }>;
     // (undocumented)
-    delete(): Promise<{
-        status: string;
-        queuedCloudDelete?: boolean;
-    }>;
-    // (undocumented)
     encrypt(o: {
         isOnline: () => boolean;
     }): Promise<{
@@ -3157,6 +3152,10 @@ export interface VerbFile {
     save(bytes: Blob, opts: {
         tryPush: boolean;
     }): Promise<unknown>;
+    trash(): Promise<{
+        status: string;
+        queuedCloudDelete?: boolean;
+    }>;
     // (undocumented)
     tryMove(to: string): Promise<{
         ok: true;

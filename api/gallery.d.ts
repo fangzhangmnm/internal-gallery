@@ -2803,7 +2803,8 @@ export declare interface VerbFile {
         ok: false;
         where: "local" | "cloud";
     }>;
-    delete(): Promise<{
+    /** 0.8.5：store 2.1.2 把 `delete()` 改叫 `trash()`（词对准语义：移进回收站；user 2026-10-17「改trash……属于bugfix」）。 */
+    trash(): Promise<{
         status: string;
         queuedCloudDelete?: boolean;
     }>;
