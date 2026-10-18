@@ -2,6 +2,7 @@
 # 构建：tsc 发射 dist/（.js + .d.ts）。tsc 本身就是类型门——不过不出货。
 set -euo pipefail
 cd "$(dirname "$0")/.."
+node scripts/compile-templates.mjs   # 0.8.4：三张 Vue 模板构建时编成 render（宿主 CSP 不放行 eval 也能开）
 echo "[build] tsc → dist/"
 rm -rf dist
 npx tsc -p tsconfig.json

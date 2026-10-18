@@ -2880,6 +2880,8 @@ export declare interface VerbStore {
     };
 }
 
+/** 宿主递进来的 Vue。**递整个模块**（`import * as Vue from ".../vue.esm-browser.prod.js"` 原样递）= 用构建时编好的 render 函数、运行时零 eval（页面开了 CSP 也能开）；
+ *  只递下面这几个也能用（0.8.3 及以前的递法），但模板要在运行时编译、需要 eval。0.8.4 */
 export declare interface VueRuntime {
     createApp: (root: unknown) => {
         mount(el: HTMLElement): unknown;

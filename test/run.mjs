@@ -21,4 +21,5 @@ import "./thumb-cache.test.mjs";
 import "./facts-cache.test.mjs";
 import "./png-text.test.mjs";
 import "./make-thumb.test.mjs";
+import "./templates-compiled.test.mjs";   // 0.8.4 预编译模板不许过期
 run();

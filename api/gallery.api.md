@@ -3224,7 +3224,7 @@ export interface VerbStore {
     identifiers: Identifiers;
 }
 
-// @public (undocumented)
+// @public
 export interface VueRuntime {
     // (undocumented)
     computed: <T>(fn: () => T) => {
