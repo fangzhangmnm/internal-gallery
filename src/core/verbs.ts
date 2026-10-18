@@ -1,6 +1,6 @@
 // 图库文件管理动词（无 DOM）——WET 自 WeebPaint src/gallery/gallery.ts 的 intents 段（rename/move/copy/resolve/del/
 //   deleteImage/folderDelete/asideRestore/asidePurge/emptyAside/encrypt/decrypt/unlock），2026-09-09 抽出成 headless 模块。
-// 红线兜底随行（提案 §5）：删=回收站且诚实读 DelResult；改名失败保输入循环重试、错误写进重弹的输入框标题；失败不报成功；
+// 红线兜底随行（提案 §5）：删=回收站且诚实读 TrashOutcome（store 2.1.2 前叫 DelResult）；改名失败保输入循环重试、错误写进重弹的输入框标题；失败不报成功；
 //   移动只给「上级 + 可见子夹」绝不 poll 全树；复制加密源原样搬密文；清空回收站部分失败必说。屏幕层只负责调 + reload。
 import { hasLocalCopy, hasCloudCopy, hasUnpushed, type GItem } from "./model/gallery-view-model.ts";
 import { ASIDE, type AsideItem, type AsideKind, type AsideScope, type AsideEmptyResult } from "./model/aside.ts";
@@ -36,7 +36,8 @@ export interface VerbDoc {
 }
 export interface VerbFile {
   tryMove(to: string): Promise<{ ok: true } | { ok: false; where: "local" | "cloud" }>;
-  delete(): Promise<{ status: string; queuedCloudDelete?: boolean }>;
+  /** 0.8.5：store 2.1.2 把 `delete()` 改叫 `trash()`（词对准语义：移进回收站；user 2026-10-17「改trash……属于bugfix」）。 */
+  trash(): Promise<{ status: string; queuedCloudDelete?: boolean }>;
   /** 0.7.2：store 0.18 的 file.resolve()——库问人三选一（云端覆盖本地 / 本地覆盖云端 / 取消），图库「处理…」唯一的后端。 */
   resolve(): Promise<{ status: string; reason?: string }>;
   getEncryptedBlob(): Promise<Blob | null>;
@@ -191,7 +192,7 @@ export function createGalleryVerbs(d: VerbDeps) {
     });
   }
 
-  /** 删除 = 移回收站；诚实读 DelResult（cancelled / noop / 只删了本地 都不许报「已删除」）。 */
+  /** 删除 = 移回收站（store 的 `file.trash()`）；诚实读 TrashOutcome（cancelled / noop / 只删了本地 都不许报「已删除」）。 */
   async function del(item: GItem): Promise<void> {
     const isActive = item.identifier === d.host.activeIdentifier();
     const isLocal = hasLocalCopy(item.syncState), isCloud = hasCloudCopy(item.syncState);
@@ -201,7 +202,7 @@ export function createGalleryVerbs(d: VerbDeps) {
     if (!(await d.host.confirm(t("gal.dlg.delTitle", { name: item.stem }), detail))) return;
     await d.host.busy(t("gal.busy.del", { name: item.stem }), async () => {
       try {
-        const del = await docFile(item.identifier).delete();
+        const del = await docFile(item.identifier).trash();
         if (del.status === "cancelled") { d.host.status(t("gal.st.delCancelled", { name: item.stem })); return; }
         void d.doc.dropCheckpoint(item.identifier);
         if (isActive) await d.doc.exit();
@@ -215,7 +216,7 @@ export function createGalleryVerbs(d: VerbDeps) {
     if (!(await d.host.confirm(t("gal.dlg.delTitle", { name: img.label }), t("gal.del.imageDetail")))) return;
     await d.host.busy(t("gal.busy.del", { name: img.label }), async () => {
       try {
-        const del = await d.store().file(img.identifier, { mode: "existing" }).delete();
+        const del = await d.store().file(img.identifier, { mode: "existing" }).trash();
         if (del.status === "cancelled") { d.host.status(t("gal.st.delCancelled", { name: img.label })); return; }
         d.host.status(del.status === "noop" ? t("gal.st.delNothing", { name: img.label })
           : del.queuedCloudDelete === false ? t("gal.st.delLocalOnly", { name: img.label })

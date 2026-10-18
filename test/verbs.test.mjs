@@ -9,7 +9,7 @@ function mk({ file = {}, files = {}, inputs = [], confirms = [], active = null, 
   const statuses = [], calls = [];
   const fileObj = (name, opts) => { calls.push(["file", name, opts]); return {
     tryMove: async (to) => { calls.push(["tryMove", name, to]); return file.tryMove ? file.tryMove(to) : { ok: true }; },
-    delete: async () => file.delete ? file.delete() : { status: "ok", queuedCloudDelete: true },
+    trash: async () => file.trash ? file.trash() : { status: "ok", queuedCloudDelete: true },
     resolve: async () => file.resolve ? file.resolve() : { status: "pushed" },
     getEncryptedBlob: async () => file.enc ?? null, open: async () => file.plain ?? null,
     save: async (b, o) => { calls.push(["save", name, opts, o]); },
@@ -76,12 +76,12 @@ describe("verbs · rename（改名失败保输入循环重试，错误写进重�
   });
 });
 
-describe("verbs · del（删=回收站；DelResult 诚实读）", () => {
+describe("verbs · del（删=回收站 = store 的 trash()；TrashOutcome 诚实读）", () => {
   it("cancelled → 报取消、不 exit；noop / 只删本地 → 错误样式；ok → 已删除；活动项 → exit + dropCheckpoint", async () => {
-    let r = mk({ file: { delete: async () => ({ status: "cancelled" }) }, active: "a.ora" }); await r.verbs.del(item("a.ora"));
+    let r = mk({ file: { trash: async () => ({ status: "cancelled" }) }, active: "a.ora" }); await r.verbs.del(item("a.ora"));
     eq(r.statuses.pop()[0], t("gal.st.delCancelled", { name: "a" })); eq(r.calls.filter((c) => c[0] === "exit").length, 0);
-    r = mk({ file: { delete: async () => ({ status: "noop" }) } }); await r.verbs.del(item("a.ora")); eq(r.statuses.pop().join(), `${t("gal.st.delNothing", { name: "a" })},true`);
-    r = mk({ file: { delete: async () => ({ status: "ok", queuedCloudDelete: false }) } }); await r.verbs.del(item("a.ora")); eq(r.statuses.pop().join(), `${t("gal.st.delLocalOnly", { name: "a" })},true`);
+    r = mk({ file: { trash: async () => ({ status: "noop" }) } }); await r.verbs.del(item("a.ora")); eq(r.statuses.pop().join(), `${t("gal.st.delNothing", { name: "a" })},true`);
+    r = mk({ file: { trash: async () => ({ status: "ok", queuedCloudDelete: false }) } }); await r.verbs.del(item("a.ora")); eq(r.statuses.pop().join(), `${t("gal.st.delLocalOnly", { name: "a" })},true`);
     r = mk({ active: "a.ora" }); await r.verbs.del(item("a.ora"));
     eq(r.statuses.pop().join(), `${t("gal.st.deleted", { name: "a" })},false`);
     eq(r.calls.filter((c) => c[0] === "exit").length, 1); eq(r.calls.filter((c) => c[0] === "drop").length, 1);
