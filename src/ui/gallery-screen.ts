@@ -459,7 +459,8 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         activeTag: t("gal.tile.active"),
         loading: t("gal.loading"), folder: t("gal.folder"), emptyFolder: t("gal.emptyFolder"), more: t("gal.more"),
         delEmptyFolder: t("gal.delEmptyFolder"), delFolderNonEmpty: t("gal.delFolderNonEmpty"), encrypted: t("enc.locked.aria"),
-        divergedNote: t("gal.divergedNote"), renameKeep: t("gal.renameKeep"), discardToTrash: t("gal.discardToTrash"),
+        divergedNote: t("gal.divergedNote"), renameKeep: t("gal.renameKeep"),
+        emptyTrash: t("gal.emptyTrashBtn"), emptyBackup: t("gal.emptyBackupBtn"),   // 0.8.6：搁置区视图顶上的「清空…」
         rename: t("gal.rename"), moveTo: t("gal.moveTo"), copy: t("gal.copy"), pullLocal: t("gal.pullLocal"),
         resolve: t("gal.resolve"), unloadLocal: t("gal.unloadLocal"), encrypt: t("menu.encrypt"), decrypt: t("menu.decrypt"),
         toTrash: t("gal.toTrash"), restore: t("gal.restore"), purge: t("gal.purge"),

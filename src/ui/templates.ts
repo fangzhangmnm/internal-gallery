@@ -26,6 +26,11 @@ export const GALLERY_TEMPLATE = `
         </template>
       </div>
 
+      <!-- 0.8.6：回收站 / 备份箱视图顶上一条动作（store files.emptyTrash / emptyBackup 一直有、图库从没给过入口——store README「暂无 gallery UI」）。复用面包屑的容器与按钮样式，宿主零 CSS。 -->
+      <div class="gallery-breadcrumb gallery-aside-bar" v-if="view!=='files' && !loading && !isEmpty">
+        <button type="button" class="danger" @click="emptyAside(view)">{{ view==='trash' ? L.emptyTrash : L.emptyBackup }}</button>
+      </div>
+
       <div class="gallery-grid" :class="{ tall: tileTall, list: layout==='list' }" :style="tileStyle" v-show="!isEmpty || loading">
         <div v-if="loading" class="gallery-loading">
           <template v-if="!stalled">{{ L.loading }}</template>
@@ -70,9 +75,11 @@ export const GALLERY_TEMPLATE = `
             <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu(row.t.identifier, $event)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
             <Teleport :to="menuMount"><div class="gallery-tile-menu-popup hidden" :data-menu="row.t.identifier" @click.stop>
               <template v-if="row.t.ghost">
+                <!-- 0.8.6：云端没了 ∧ 这台有没传的改动——去掉「丢弃（送回收站）」那个面外的方向动词（user 2026-10-16「冲突只在库的面里三选一」）；
+                     「处理…」= store file.resolve()：库弹面（本地覆盖云端 = 重推 / 云端覆盖本地 = 这份进回收站 / 取消）。「重命名留存」留着：不是同步动词，是改身份另存。 -->
                 <div class="gallery-menu-note">{{ L.divergedNote }}</div>
+                <button type="button" @click="resolve(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cloud-pending"/></svg><span>{{ L.resolve }}</span></button>
                 <button type="button" @click="rename(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#rename"/></svg><span>{{ L.renameKeep }}</span></button>
-                <button type="button" class="danger" @click="del(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.discardToTrash }}</span></button>
               </template>
               <template v-else-if="row.t.pendingGone">
                 <!-- 0.8.3：没同步好的行只有「处理…」（库弹面三选一）。这里以前还放着「送到回收站」= 双向删除，和 KudsRocket 2026-10-14 00:54 丢存档同一个坑（user「冲突的时候不要放删除按钮」）；

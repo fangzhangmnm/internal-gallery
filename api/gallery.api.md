@@ -1134,11 +1134,6 @@ export const GALLERY_TEXT: {
         readonly en: "deleted";
         readonly ja: "削除";
     };
-    readonly "gal.discardToTrash": {
-        readonly zh: "丢弃（送回收站）";
-        readonly en: "Discard (to trash)";
-        readonly ja: "破棄（ゴミ箱へ）";
-    };
     readonly "gal.divergedNote": {
         readonly zh: "云端副本已被别的设备移动或删除；本地这份有未推送的修改。";
         readonly en: "The cloud copy was moved or deleted by another device; this local copy has unpushed changes.";
@@ -1233,6 +1228,16 @@ export const GALLERY_TEXT: {
         readonly zh: "空文件夹";
         readonly en: "Empty folder";
         readonly ja: "空のフォルダ";
+    };
+    readonly "gal.emptyBackupBtn": {
+        readonly zh: "清空备份箱…";
+        readonly en: "Empty backups…";
+        readonly ja: "バックアップを空に…";
+    };
+    readonly "gal.emptyTrashBtn": {
+        readonly zh: "清空回收站…";
+        readonly en: "Empty trash…";
+        readonly ja: "ゴミ箱を空に…";
     };
     readonly "gal.firstFrameFailed": {
         readonly zh: "图库读取失败（详见诊断日志）";
