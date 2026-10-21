@@ -109,3 +109,27 @@ describe("gallery-registry · A3 未知字段 round-trip（generic JSON dict 口
     eq(fin.label, "A", "查重复用刷新了派生标签");
   });
 });
+
+// 0.8.7（道 6 F-58 §8 第 2 件；user 2026-10-21「gallery-registry 库名改宿主传 可以」）：库名归宿主；没配退回老字面量 + diag 一次；开过库再配 → 抛。
+import { configureGalleryRegistry, galleryRegistryDbName, idbRegistryKV } from "../src/core/library/gallery-registry.ts";
+describe("gallery-registry · configureGalleryRegistry（0.8.7）", () => {
+  it("没配 → 老字面量（既有 WeebPaint 用户零迁移）；配了 → 用配的；开过库再配 → 抛", async () => {
+    eq(galleryRegistryDbName(), "weebpaint-bd6cece69075d759.gallery-registry", "没配 = 老名");
+    configureGalleryRegistry({ dbName: "someapp-0123456789abcdef.gallery-registry" });
+    eq(galleryRegistryDbName(), "someapp-0123456789abcdef.gallery-registry", "配了 = 用配的");
+    const opened = [];
+    globalThis.indexedDB = { open(name) {
+      opened.push(name);
+      const req = { result: null, error: null, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+      const db = { objectStoreNames: { contains: () => true }, createObjectStore() {}, close() {}, onversionchange: null,
+        transaction: () => { const tx = { oncomplete: null, onerror: null, onabort: null, error: null, objectStore: () => ({ getAll: () => { const r = { result: [] }; queueMicrotask(() => tx.oncomplete?.()); return r; }, put() {}, delete() {} }) }; return tx; } };
+      req.result = db; queueMicrotask(() => req.onsuccess?.()); return req;
+    } };
+    const list = await idbRegistryKV().list();
+    eq(list.length, 0);
+    eq(opened[0], "someapp-0123456789abcdef.gallery-registry", "★真开的是配的那个名");
+    let err = null; try { configureGalleryRegistry({ dbName: "late.name" }); } catch (e) { err = e; }
+    assert(err && /too late/.test(err.message), "开过库再配 = 响亮抛");
+    delete globalThis.indexedDB;
+  });
+});

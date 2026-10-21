@@ -373,6 +373,11 @@ export interface CloudOtherItem {
 // @public (undocumented)
 export function configureDeviceKv(kv: DeviceKv): void;
 
+// @public (undocumented)
+export function configureGalleryRegistry(opts: {
+    dbName: string;
+}): void;
+
 // @public
 export function configureText(opts: {
     t?: (key: GalleryTextKey, params?: Record<string, string | number>) => string | null | undefined;
@@ -2486,6 +2491,9 @@ export interface GalleryRegistry {
 
 // @public
 export const galleryRegistry: GalleryRegistry;
+
+// @public
+export function galleryRegistryDbName(): string;
 
 // @public (undocumented)
 export interface GalleryScreenDeps {

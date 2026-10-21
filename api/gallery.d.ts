@@ -262,6 +262,10 @@ export declare interface CloudOtherItem {
 
 export declare function configureDeviceKv(kv: DeviceKv): void;
 
+export declare function configureGalleryRegistry(opts: {
+    dbName: string;
+}): void;
+
 /** 宿主接管文案（缺 key 时宿主返回 null/undefined/空串 → 落回默认）。 */
 export declare function configureText(opts: {
     t?: (key: GalleryTextKey, params?: Record<string, string | number>) => string | null | undefined;
@@ -2265,6 +2269,9 @@ export declare interface GalleryRegistry {
 
 /** 浏览器单例（懒开库：import 本身零 IDB 访问，node 测试 import 安全）。 */
 export declare const galleryRegistry: GalleryRegistry;
+
+/** 实际用的库名（没配 = 老字面量）；测试 / 诊断用。 */
+export declare function galleryRegistryDbName(): string;
 
 export declare interface GalleryScreenDeps {
     vue: VueRuntime;

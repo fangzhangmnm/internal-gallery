@@ -1,3 +1,4 @@
+import { note as diagNote } from "../guards/diag-log.ts";   // 0.8.7：没配库名时记一次
 // gallery-registry.ts —— P3 图库名册器官（device-local；ADR-0024：per-gallery / device-local / 永不同步）。
 // created 2026-08-27 by Claude Fable 5. 契约 = ai-docs/20260827-p3-gallery-multiinstance-grill-verdicts.md §3。
 //
@@ -136,14 +137,28 @@ export function createGalleryRegistry(kv: RegistryKV): GalleryRegistry {
 }
 
 // ─── IDB 适配器（浏览器；node 测试用 Map 假件替代本段。形状抄 crash-store，刻意 WET）──────────
-const DB_NAME = "weebpaint-bd6cece69075d759.gallery-registry";
+// 0.8.7（道 6 F-58 §8 第 2 件，user 2026-10-21「gallery-registry 库名改宿主传 可以」）：库名归宿主——这是宿主的设备记事本（ADR-0024），不该带 WeebPaint 的 GUID 写死在包里。
+//   configureGalleryRegistry({ dbName }) 在第一次开库之前配；没配 = 退回老字面量（既有 WeebPaint 用户零迁移）+ diag 记一次；开过库再配 = 编程错误，响亮抛。
+const LEGACY_DB_NAME = "weebpaint-bd6cece69075d759.gallery-registry";
 const STORE = "entries";   // key = 铸的 id
+let _dbName: string | null = null;
+let _opened = false;
+let _warnedLegacy = false;
+export function configureGalleryRegistry(opts: { dbName: string }): void {
+  if (!opts?.dbName) throw new Error("configureGalleryRegistry: dbName required");
+  if (_opened) throw new Error(`configureGalleryRegistry: too late — the registry database was already opened as "${_dbName ?? LEGACY_DB_NAME}" (configure before the first gallery call)`);
+  _dbName = opts.dbName;
+}
+/** 实际用的库名（没配 = 老字面量）；测试 / 诊断用。 */
+export function galleryRegistryDbName(): string { return _dbName ?? LEGACY_DB_NAME; }
 
 let _dbPromise: Promise<IDBDatabase> | null = null;
 function _openDB(): Promise<IDBDatabase> {
   if (_dbPromise) return _dbPromise;
+  if (!_dbName && !_warnedLegacy) { _warnedLegacy = true; diagNote("gallery", `gallery-registry: host did not call configureGalleryRegistry({ dbName }); using legacy database name "${LEGACY_DB_NAME}"`); }
+  _opened = true;
   _dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(galleryRegistryDbName(), 1);
     req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE); };
     req.onsuccess = () => { req.result.onversionchange = () => { req.result.close(); _dbPromise = null; }; resolve(req.result); };
     req.onerror = () => { _dbPromise = null; reject(req.error); };
