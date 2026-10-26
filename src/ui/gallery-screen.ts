@@ -4,7 +4,7 @@
 import { toggleAdoptedPopup, type PopupMenuHandle } from "@internal/workbench-elements";
 import type { SyncState } from "@internal/store";
 import type { GItem } from "../core/model/gallery-view-model.ts";
-import { tileFor, breadcrumb, asideTileFor, humanTime, humanSize, fullTime, hasLocalCopy } from "../core/model/gallery-view-model.ts";
+import { tileFor, breadcrumb, asideTileFor, humanTime, humanSize, fullTime, hasLocalCopy, type GalleryTile } from "../core/model/gallery-view-model.ts";
 import { ASIDE, type AsideItem, type AsideKind, type AsideScope } from "../core/model/aside.ts";
 import { pathJoin } from "../core/model/gallery-path.ts";
 import { imageThumbToken, imageTwinIdentifier, mimeForImageName } from "../core/model/cloud-image-model.ts";
@@ -51,7 +51,9 @@ export interface VueRuntime {
 }
 /** 图库对编辑器的全部要求（提案 §2 DocHost；WeebPaint session-state 的十处直调收成这一个端口）。 */
 /** 0.8.0：卡片右下角那粒动作钮长什么样（宿主按卡片信息 + 事实决定）；null = 这张卡没有钮。state：ready = 亮；none = 不画（和 null 一样，留给「事实已到、确定没有」）；unknown = 淡（事实还没到）。 */
-export interface TileAction { icon: string; title: string; state?: "ready" | "none" | "unknown" }
+export interface TileAction { icon: string; title: string; state?: "ready" | "none" | "unknown";
+  /** 0.8.8：库自己放的钮（宿主没给 tileAction 时）：resolve = 「处理…」→ verbs.resolve；宿主的钮没有这个字段。 */
+  verb?: "resolve" }
 export interface GalleryDocHost extends VerbDoc {
   open(item: GItem): Promise<void>;
   /** 0.8.0：点了卡片上的动作钮（不打开那份）。facts = 这张卡的事实（policy.facts 取的；没取到 = null）。 */
@@ -132,6 +134,10 @@ export interface GalleryHandle {
   emptyBackup(scope?: AsideScope): void;
   requestUnlock(): Promise<boolean>;
   invalidateEncrypted(name: string): void;
+  /** 0.8.8：只看要处理的（没同步好的那几份）。宿主在登录落地后发现有没传上去的东西时可以直接开图库进这个视图（CatsUp 2026-10-26）。 */
+  setAttentionOnly(on: boolean): void;
+  /** 0.8.8：当前夹里要处理的份数（和顶部横幅同一个数；只算列过的这一夹）。 */
+  getAttentionCount(): number;
   /** 0.3.0：布局即时切换（用户偏好记不记住归宿主）。 */
   setLayout(l: "cards" | "list"): void;
   getLayout(): "cards" | "list";
@@ -142,6 +148,7 @@ interface GalleryVM {
   setFolder(p: string): void; hydrateFolder(p: string): void; folder: string;
   emptyAside(kind: AsideKind, scope?: AsideScope): void; requestUnlock(): Promise<boolean>; invalidateEncrypted(name: string): void;
   layout: "cards" | "list"; setLayout(l: "cards" | "list"): void;
+  attentionOnly: boolean; setAttentionOnly(on: boolean): void; attentionCount: number;
 }
 const PIXELATED_THUMB_MAX_EDGE = 128;
 function thumbLoadPixelated(e: Event): boolean {
@@ -380,7 +387,18 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       });
 
       const folderTiles = computed(() => data.folderNames.map((fn) => ({ name: fn, path: pathJoin(folder.value, fn) })));
-      const fileTiles = computed(() => data.files.map((it) => { const tile = tileFor(it, { signedIn: d.host.signedIn(), activeIdentifier: d.host.activeIdentifier(), encrypted: !!encByName[it.identifier] }); const info = fileInfo(it), facts = factsOf(it.identifier); return { item: it, t: tile, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.identifier, info, facts), thumb: hasThumb(it.kind), info, facts, act: actionOf(it.identifier, info, facts) }; }));
+      // 0.8.8：要处理的卡片，宿主没放钮的话库自己放一粒可见的「处理…」（user 2026-10-26「处理的东西应该图库上多一个按钮图示……只有非常小的云图标提示……在...里面」）
+      const attentionAction = (tile: GalleryTile): TileAction | null => tile.attention ? { icon: "cloud-pending", title: t("gal.resolve"), state: "ready", verb: "resolve" } : null;
+      const fileTiles = computed(() => data.files.map((it) => { const tile = tileFor(it, { signedIn: d.host.signedIn(), activeIdentifier: d.host.activeIdentifier(), encrypted: !!encByName[it.identifier] }); const info = fileInfo(it), facts = factsOf(it.identifier); return { item: it, t: tile, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.identifier, info, facts), thumb: hasThumb(it.kind), info, facts, act: actionOf(it.identifier, info, facts) ?? attentionAction(tile) }; }));
+      // 0.8.8：顶部横幅「有 N 份要处理 → 看列表」+ 只看要处理的（user「你一开始说批量处理我以为的是给你一个列表你当时就立刻点」——列表 = 这几张卡，每张一粒「处理…」，点了当场弹面）
+      const attentionWanted = ref(false);   // 宿主 / 用户要的；帧还没到时也能先记下（setAttentionOnly(true) 紧跟 open()）
+      const attentionCount = computed(() => fileTiles.value.reduce((n, r) => n + (r.t.attention ? 1 : 0), 0));
+      const attentionOnly = computed(() => attentionWanted.value && attentionCount.value > 0);   // 没有要处理的 = 当没开（绝不留一个空格子）
+      const shownFileTiles = computed(() => attentionOnly.value ? fileTiles.value.filter((r) => r.t.attention) : fileTiles.value);
+      const attentionText = computed(() => t(attentionOnly.value ? "gal.attention.showing" : "gal.attention.banner", { n: attentionCount.value }));
+      let _prevAttention = 0;
+      watch(() => attentionCount.value, () => { const n = attentionCount.value; if (n === 0 && _prevAttention > 0) attentionWanted.value = false; _prevAttention = n; });   // 都处理完了 → 回全部
+      const setAttentionOnly = (on: boolean) => { attentionWanted.value = on; };
       // 0.8.0：列表一变就把该取的事实排上（加密件不取：尾读到的是密文）；事实到了 _facts 变 → fileTiles 重算 → 钮 / 覆盖层跟着
       const askFacts = () => { if (!d.facts) return; for (const r of fileTiles.value) if (!r.t.encrypted && (r.t.hasCloud || r.t.hasLocal)) wantFacts(r.t.identifier, r.item.kind, String(r.t.time || r.t.size || 0), r.t.cloudNewer ? "cloud" : "local"); };
       watch(() => fileTiles.value, askFacts); askFacts();
@@ -430,8 +448,12 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const decryptItem = wrap((item: GItem) => verbs.decryptItem(item));
       async function onUnlock(name: string) { if (await verbs.unlock(name)) await reload(); }
 
-      /** 0.8.0：卡片上的动作钮（不打开那份）。 */
-      function tileAction(item: GItem) { try { void Promise.resolve(d.doc.tileAction?.(item, factsOf(item.identifier))).catch((e: unknown) => d.reportError(e)); } catch (e) { d.reportError(e); } }
+      /** 0.8.0：卡片上的动作钮（不打开那份）。0.8.8：库自己放的「处理…」走 verbs.resolve；宿主的钮照旧走 doc.tileAction。 */
+      function tileAction(row: { item: GItem; act: TileAction | null }) {
+        if (row.act?.verb === "resolve") { void resolve(row.item); return; }
+        const item = row.item;
+        try { void Promise.resolve(d.doc.tileAction?.(item, factsOf(item.identifier))).catch((e: unknown) => d.reportError(e)); } catch (e) { d.reportError(e); }
+      }
       async function openTile(item: GItem) {
         closeMenu();
         if (item.identifier === d.host.activeIdentifier()) { await d.doc.open(item); return; }
@@ -467,6 +489,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         imageFile: t("gal.imageFile"), otherFile: t("gal.otherFile"),
         retry: t("gal.retry"), openDiag: t("gal.openDiag"), reload: t("gal.reload"),
         keepOffline: t("gal.keepOffline"), unread: t("gal.marker.unread"),
+        attentionList: t("gal.attention.list"), attentionAll: t("gal.attention.all"),   // 0.8.8
       };
       const tileAspect = typeof d.tile?.aspect === "number" && Number.isFinite(d.tile.aspect) && d.tile.aspect > 0 ? d.tile.aspect : null;   // null = 默认方图（样式表里的 1 / 1）
       const tileTall = tileAspect != null && tileAspect < 1;
@@ -474,7 +497,8 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       return {
         tileTall, tileStyle, layout, setLayout: (l: "cards" | "list") => { layout.value = l; },
         view, folder, loading, stalled, retry, openDiag, reloadApp, openMenu, isEmpty, emptyText, L, phHtml,
-        folderTiles, fileTiles, imageTiles, otherTiles, asideTiles, crumbs, badgeIcon2,
+        folderTiles, fileTiles, shownFileTiles, imageTiles, otherTiles, asideTiles, crumbs, badgeIcon2,
+        attentionOnly, attentionCount, attentionText, setAttentionOnly, toggleAttentionOnly: () => setAttentionOnly(!attentionWanted.value),   // 0.8.8
         badgeIcon, fmtMeta, humanTime, fullTime, ICON, toggleMenu, menuMount: el, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
         openTile, tileAction, openImageTile, deleteImage, rename, move, copy, resolve, unload, keepOffline, del, folderDelete, asideRestore, asidePurge, emptyAside,
         encryptItem, decryptItem, onUnlock, requestUnlock, hasEncryption: !!enc,
@@ -489,6 +513,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
   return {
     refresh: () => vm.reload(), setView: (v) => vm.setView(v), getView: () => vm.view,
     setLayout: (l) => vm.setLayout(l), getLayout: () => vm.layout,
+    setAttentionOnly: (on) => vm.setAttentionOnly(on), getAttentionCount: () => vm.attentionCount,   // 0.8.8
     setFolder: (p) => vm.setFolder(p), hydrateFolder: (p) => vm.hydrateFolder(p), getFolder: () => vm.folder,
     emptyTrash: (scope) => vm.emptyAside("trash", scope), emptyBackup: (scope) => vm.emptyAside("backup", scope), requestUnlock: () => vm.requestUnlock(), invalidateEncrypted: (name) => vm.invalidateEncrypted(name),
     unmount: () => app.unmount(),

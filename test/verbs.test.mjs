@@ -119,6 +119,14 @@ describe("verbs · copy / resolve", () => {
     r = mk({ file: { resolve: async () => ({ status: "offline" }) } }); await r.verbs.resolve(item("a.ora")); eq(r.statuses.pop()[1], true);
     r = mk({ file: { resolve: async () => ({ status: "unresolved", reason: "cloud-vanished" }) } }); await r.verbs.resolve(item("a.ora")); eq(r.statuses.pop()[0], t("gal.st.resolve.unresolved", { name: "a", e: "cloud-vanished" }));
     r = mk(); await r.verbs.resolve(item("a.ora")); eq(r.statuses.pop()[0], t("gal.st.resolve.pushed", { name: "a", e: "pushed" }));
+  });
+  it("0.8.8：resolve（处理…）不包在宿主 busy 里——它中途要弹面问人，模态 busy 会把面挡死（CatsUp 2026-10-25 / WXHW F-91）", async () => {
+    let busyCalls = 0;
+    const r = mk({ file: { resolve: async () => ({ status: "pushed" }) } });
+    const origBusy = r.host.busy; r.host.busy = async (l, fn) => { busyCalls++; return origBusy(l, fn); };
+    await r.verbs.resolve(item("a.ora"));
+    eq(busyCalls, 0, "resolve 一次 busy 都不进");
+    eq(r.statuses.pop()[0], t("gal.st.resolve.pushed", { name: "a", e: "pushed" }));
     eq(typeof r.verbs.reupload, "undefined", "「重新上传」动词已不存在"); eq(typeof r.verbs.push, "undefined", "「推送到云端」动词已不存在");
   });
 });

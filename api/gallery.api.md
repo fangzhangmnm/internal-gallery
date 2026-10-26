@@ -100,6 +100,9 @@ export type AttachmentState = {
 };
 
 // @public
+export const ATTENTION_BADGES: ReadonlySet<BadgeKind>;
+
+// @public
 export const BACKUP_BUDGET_BYTES: number;
 
 // @public
@@ -1384,6 +1387,26 @@ export const GALLERY_TEXT: {
         readonly en: "Resolve…";
         readonly ja: "処理…";
     };
+    readonly "gal.attention.banner": {
+        readonly zh: "有 {n} 份没同步好，要你处理";
+        readonly en: "{n} file(s) need your attention (not in sync)";
+        readonly ja: "{n} 件が未同期・対応が必要です";
+    };
+    readonly "gal.attention.showing": {
+        readonly zh: "只看要处理的（{n} 份）";
+        readonly en: "Showing only the {n} that need attention";
+        readonly ja: "対応が必要な {n} 件のみ表示中";
+    };
+    readonly "gal.attention.list": {
+        readonly zh: "看列表";
+        readonly en: "Show them";
+        readonly ja: "一覧を見る";
+    };
+    readonly "gal.attention.all": {
+        readonly zh: "回到全部";
+        readonly en: "Show all";
+        readonly ja: "すべて表示";
+    };
     readonly "gal.busy.resolve": {
         readonly zh: "正在处理 {name}…";
         readonly en: "Resolving {name}…";
@@ -2124,9 +2147,9 @@ export const GALLERY_TEXT: {
         readonly en: "Local only · unsynced edits (never uploaded)";
     };
     readonly "gv.badge.ghost": {
-        readonly zh: "云端副本已被移动或删除，本地有未推送的修改 —— 可「重命名留存」或「丢弃」";
-        readonly en: "Cloud copy was moved or deleted while local has unpushed edits — “rename & keep” or “discard”";
-        readonly ja: "クラウド側が移動/削除され、ローカルに未プッシュの変更があります——「改名して保持」か「破棄」を";
+        readonly zh: "云端副本已被移动或删除，本地有未推送的修改 —— 「处理…」里选：本地覆盖云端（传回去）或云端覆盖本地（这份进回收站）；也可「重命名留存」";
+        readonly en: "Cloud copy was moved or deleted while local has unpushed edits — use “Resolve…”: local overwrites cloud (upload again) or cloud overwrites local (to trash); or “rename & keep”";
+        readonly ja: "クラウド側が移動/削除され、ローカルに未プッシュの変更があります——「処理…」で：ローカルでクラウドを上書き（再アップロード）／クラウドでローカルを上書き（ゴミ箱へ）。または「改名して保持」";
     };
     readonly "gv.badge.localOnly": {
         readonly zh: "仅本地（未上传云端）";
@@ -2403,6 +2426,7 @@ export interface GalleryEntry {
 export interface GalleryHandle {
     emptyBackup(scope?: AsideScope): void;
     emptyTrash(scope?: AsideScope): void;
+    getAttentionCount(): number;
     // (undocumented)
     getFolder(): string;
     // (undocumented)
@@ -2417,6 +2441,7 @@ export interface GalleryHandle {
     refresh(): void;
     // (undocumented)
     requestUnlock(): Promise<boolean>;
+    setAttentionOnly(on: boolean): void;
     // (undocumented)
     setFolder(path: string): void;
     setLayout(l: "cards" | "list"): void;
@@ -2573,6 +2598,7 @@ export const galleryTextKeys: () => GalleryTextKey[];
 
 // @public (undocumented)
 export interface GalleryTile {
+    attention: boolean;
     // (undocumented)
     badge: BadgeKind;
     // (undocumented)
@@ -3059,6 +3085,7 @@ export interface TileAction {
     state?: "ready" | "none" | "unknown";
     // (undocumented)
     title: string;
+    verb?: "resolve";
 }
 
 // @public (undocumented)

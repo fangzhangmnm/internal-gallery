@@ -50,7 +50,12 @@ export interface GalleryTile {
   pendingGone: boolean;  // cloud-gone clean 孤儿、防抖 grace 内（照常显示 + badge；宽限后自动移入回收站；可「重新上传」/「删除」）
   isActive: boolean;
   encrypted: boolean;    // 本地字节是加密容器（ADR-0012），由 gallery 按夹探测注入。纯云端项未知（thumb 拉回时按 MIME 现场识别）
+  /** 0.8.8：这份**没同步好、要人处理**（登录态下 float / dirtyBoth / conflictBoth / ghost / pendingGone）——卡片上给可见的「处理…」钮、顶部横幅计数。
+   *  localOnly（干净、从没传过）不算：store `resolve()` 对它回 clean、没有可做的事；newerOnCloud 也不算：打开就自动快进。 */
+  attention: boolean;
 }
+/** 0.8.8：哪些徽章算「要人处理」（和 store `resolve()` 真能做事的集合一致）。 */
+export const ATTENTION_BADGES: ReadonlySet<BadgeKind> = new Set<BadgeKind>(["float", "dirtyBoth", "conflictBoth", "ghost", "pendingGone"]);
 
 /** store 9 态 → 徽章 9 态，一一对应、零推导。登出视角 / 离线的压扁由 store 在算 syncState 时做（ListContext），本包不再重做。 */
 const BADGE_OF: Record<SyncState, BadgeKind> = {
@@ -78,6 +83,7 @@ export function tileFor(
     isActive: !!opts.activeIdentifier && item.identifier === opts.activeIdentifier,
     // 加密态由调用方探测后注入（store 的 Item 内容盲、没有 encrypted 轴）。
     encrypted: !!opts.encrypted,
+    attention: opts.signedIn && ATTENTION_BADGES.has(badge),
   };
 }
 

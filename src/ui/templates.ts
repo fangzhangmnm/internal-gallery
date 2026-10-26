@@ -26,6 +26,12 @@ export const GALLERY_TEMPLATE = `
         </template>
       </div>
 
+      <!-- 0.8.8：有没同步好的 → 顶上一条横幅「有 N 份要处理 → 看列表」；点了只看那几张（每张右下角一粒可见的「处理…」钮）。复用面包屑容器样式。 -->
+      <div class="gallery-breadcrumb gallery-attention-bar" v-if="view==='files' && !loading && attentionCount>0">
+        <span class="gallery-attention-text">{{ attentionText }}</span>
+        <button type="button" class="gallery-attention-toggle" @click="toggleAttentionOnly">{{ attentionOnly ? L.attentionAll : L.attentionList }}</button>
+      </div>
+
       <!-- 0.8.6：回收站 / 备份箱视图顶上一条动作（store files.emptyTrash / emptyBackup 一直有、图库从没给过入口——store README「暂无 gallery UI」）。复用面包屑的容器与按钮样式，宿主零 CSS。 -->
       <div class="gallery-breadcrumb gallery-aside-bar" v-if="view!=='files' && !loading && !isEmpty">
         <button type="button" class="danger" @click="emptyAside(view)">{{ view==='trash' ? L.emptyTrash : L.emptyBackup }}</button>
@@ -45,7 +51,7 @@ export const GALLERY_TEMPLATE = `
         </div>
 
         <template v-if="view==='files' && !loading">
-          <div v-for="ft in folderTiles" :key="'F:'+ft.path" class="gallery-tile folder" @click="enterFolder(ft.path)">
+          <div v-for="ft in (attentionOnly ? [] : folderTiles)" :key="'F:'+ft.path" class="gallery-tile folder" @click="enterFolder(ft.path)">
             <div class="gallery-tile-thumb" v-html="ICON.folder"></div>
             <div class="gallery-tile-name-row">
               <div class="gallery-tile-name" :title="ft.path">{{ ft.name }}</div>
@@ -57,10 +63,10 @@ export const GALLERY_TEMPLATE = `
             </div></Teleport>
           </div>
 
-          <div v-for="row in fileTiles" :key="row.t.identifier" class="gallery-tile" :class="{ active: row.t.isActive, encrypted: row.t.encrypted }" @click="openTile(row.item)">
+          <div v-for="row in shownFileTiles" :key="row.t.identifier" class="gallery-tile" :class="{ active: row.t.isActive, encrypted: row.t.encrypted, attention: row.t.attention }" @click="openTile(row.item)">
             <ThumbCell :enc-name="row.t.encrypted && row.thumb ? row.t.identifier : null" :fetchable="!row.t.encrypted && (row.t.hasCloud || row.t.hasLocal) && row.thumb" :is-cloud="!row.t.hasLocal && row.t.hasCloud" :cloud-newer="row.t.cloudNewer" :thumb-token="String(row.t.time || row.t.size || 0)" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="phHtml(row.t.identifier, row.info)" :alt="row.t.identifier" @unlock="onUnlock" />
             <span v-if="row.ov" class="gallery-tile-overlay" v-html="row.ov"></span>
-            <span v-if="row.act" class="gallery-tile-action-slot"><button type="button" class="gallery-tile-action" :class="row.act.state || 'ready'" :title="row.act.title" :aria-label="row.act.title" @click.stop="tileAction(row.item)" @pointerdown.stop v-html="badgeIcon2(row.act.icon)"></button></span>
+            <span v-if="row.act" class="gallery-tile-action-slot"><button type="button" class="gallery-tile-action" :class="[row.act.state || 'ready', row.act.verb ? 'verb-' + row.act.verb : '']" :title="row.act.title" :aria-label="row.act.title" @click.stop="tileAction(row)" @pointerdown.stop><span class="gallery-tile-action-ico" v-html="badgeIcon2(row.act.icon)"></span><span v-if="row.act.verb" class="gallery-tile-action-label">{{ row.act.title }}</span></button></span>
             <span v-if="row.t.encrypted" class="gallery-tile-lockmark" :title="L.encrypted" v-html="ICON.lock"></span>
             <div class="gallery-tile-name-row">
               <span v-if="row.t.isActive" class="gallery-tile-active-tag">{{ L.activeTag }}</span>
@@ -101,7 +107,7 @@ export const GALLERY_TEMPLATE = `
             </div></Teleport>
           </div>
 
-          <div v-for="im in imageTiles" :key="'I:'+im.identifier" class="gallery-tile image-file" @click="openImageTile(im.raw)">
+          <div v-for="im in (attentionOnly ? [] : imageTiles)" :key="'I:'+im.identifier" class="gallery-tile image-file" @click="openImageTile(im.raw)">
             <ImageThumbCell :identifier="im.identifier" :token="im.token" :fallback="im.label.slice(0,1) || '?'" :alt="im.label" />
             <div class="gallery-tile-name-row">
               <div class="gallery-tile-name" :title="im.identifier">{{ im.label }}</div>
@@ -115,7 +121,7 @@ export const GALLERY_TEMPLATE = `
               <button type="button" class="danger" @click="deleteImage(im.raw)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.toTrash }}</span></button>
             </div></Teleport>
           </div>
-          <div v-for="ot in otherTiles" :key="'O:'+ot.identifier" class="gallery-tile other-file">
+          <div v-for="ot in (attentionOnly ? [] : otherTiles)" :key="'O:'+ot.identifier" class="gallery-tile other-file">
             <div class="gallery-tile-thumb" v-html="ICON.file"></div>
             <div class="gallery-tile-name-row">
               <div class="gallery-tile-name" :title="ot.identifier">{{ ot.label }}</div>

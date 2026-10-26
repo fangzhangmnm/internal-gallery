@@ -98,3 +98,20 @@ describe("gallery · naturalCompare 自然排序", () => {
     assert(arr.indexOf("ABC2") < arr.indexOf("abc10"), "跨大小写数字段仍数值比");
   });
 });
+
+// 0.8.8：attention 旗 = 「要人处理」（库自己放可见「处理…」钮 + 顶部横幅计数的依据）。created 2026-10-26 by Claude Fable 5.1
+describe("gallery-view-model · attention（0.8.8）", () => {
+  const on = { signedIn: true, activeIdentifier: null }, off = { signedIn: false, activeIdentifier: null };
+  const mk = (s, o = on) => tileFor({ identifier: "a.ora", stem: "a", kind: "painting", syncState: s }, o);
+  it("登录态：float / unpushed / conflict / ghost / pendingGone 要处理；synced / cloud-only / newer-on-cloud / local-only 不算", () => {
+    for (const s of ["float", "unpushed", "conflict", "ghost", "pendingGone"]) eq(mk(s).attention, true, s);
+    for (const s of ["synced", "cloud-only", "newer-on-cloud", "local-only"]) eq(mk(s).attention, false, s);
+  });
+  it("登出视角一律不算（没有云端就没有「没同步好」）", () => {
+    for (const s of ["float", "unpushed", "conflict", "ghost", "pendingGone"]) eq(mk(s, off).attention, false, s);
+  });
+  it("ghost 的徽章说明改成词汇表的话（不再提「丢弃」）", () => {
+    assert(!/discard/.test(mk("ghost").badgeTitle), "英文不再有 discard");
+    assert(/Resolve/.test(mk("ghost").badgeTitle), "指向「处理…」");
+  });
+});

@@ -76,6 +76,9 @@ export declare type AttachmentState = {
     online: boolean;
 };
 
+/** 0.8.8：哪些徽章算「要人处理」（和 store `resolve()` 真能做事的集合一致）。 */
+export declare const ATTENTION_BADGES: ReadonlySet<BadgeKind>;
+
 /** 备份 zip 的内存护栏（超过就不再往包里塞，剩下的逐件下载）。常量可调。 */
 export declare const BACKUP_BUDGET_BYTES: number;
 
@@ -1204,6 +1207,26 @@ export declare const GALLERY_TEXT: {
         readonly en: "Resolve…";
         readonly ja: "処理…";
     };
+    readonly "gal.attention.banner": {
+        readonly zh: "有 {n} 份没同步好，要你处理";
+        readonly en: "{n} file(s) need your attention (not in sync)";
+        readonly ja: "{n} 件が未同期・対応が必要です";
+    };
+    readonly "gal.attention.showing": {
+        readonly zh: "只看要处理的（{n} 份）";
+        readonly en: "Showing only the {n} that need attention";
+        readonly ja: "対応が必要な {n} 件のみ表示中";
+    };
+    readonly "gal.attention.list": {
+        readonly zh: "看列表";
+        readonly en: "Show them";
+        readonly ja: "一覧を見る";
+    };
+    readonly "gal.attention.all": {
+        readonly zh: "回到全部";
+        readonly en: "Show all";
+        readonly ja: "すべて表示";
+    };
     readonly "gal.busy.resolve": {
         readonly zh: "正在处理 {name}…";
         readonly en: "Resolving {name}…";
@@ -1944,9 +1967,9 @@ export declare const GALLERY_TEXT: {
         readonly en: "Local only · unsynced edits (never uploaded)";
     };
     readonly "gv.badge.ghost": {
-        readonly zh: "云端副本已被移动或删除，本地有未推送的修改 —— 可「重命名留存」或「丢弃」";
-        readonly en: "Cloud copy was moved or deleted while local has unpushed edits — “rename & keep” or “discard”";
-        readonly ja: "クラウド側が移動/削除され、ローカルに未プッシュの変更があります——「改名して保持」か「破棄」を";
+        readonly zh: "云端副本已被移动或删除，本地有未推送的修改 —— 「处理…」里选：本地覆盖云端（传回去）或云端覆盖本地（这份进回收站）；也可「重命名留存」";
+        readonly en: "Cloud copy was moved or deleted while local has unpushed edits — use “Resolve…”: local overwrites cloud (upload again) or cloud overwrites local (to trash); or “rename & keep”";
+        readonly ja: "クラウド側が移動/削除され、ローカルに未プッシュの変更があります——「処理…」で：ローカルでクラウドを上書き（再アップロード）／クラウドでローカルを上書き（ゴミ箱へ）。または「改名して保持」";
     };
     readonly "gv.badge.localOnly": {
         readonly zh: "仅本地（未上传云端）";
@@ -2218,6 +2241,10 @@ export declare interface GalleryHandle {
     emptyBackup(scope?: AsideScope): void;
     requestUnlock(): Promise<boolean>;
     invalidateEncrypted(name: string): void;
+    /** 0.8.8：只看要处理的（没同步好的那几份）。宿主在登录落地后发现有没传上去的东西时可以直接开图库进这个视图（CatsUp 2026-10-26）。 */
+    setAttentionOnly(on: boolean): void;
+    /** 0.8.8：当前夹里要处理的份数（和顶部横幅同一个数；只算列过的这一夹）。 */
+    getAttentionCount(): number;
     /** 0.3.0：布局即时切换（用户偏好记不记住归宿主）。 */
     setLayout(l: "cards" | "list"): void;
     getLayout(): "cards" | "list";
@@ -2360,6 +2387,9 @@ export declare interface GalleryTile {
     pendingGone: boolean;
     isActive: boolean;
     encrypted: boolean;
+    /** 0.8.8：这份**没同步好、要人处理**（登录态下 float / dirtyBoth / conflictBoth / ghost / pendingGone）——卡片上给可见的「处理…」钮、顶部横幅计数。
+     *  localOnly（干净、从没传过）不算：store `resolve()` 对它回 clean、没有可做的事；newerOnCloud 也不算：打开就自动快进。 */
+    attention: boolean;
 }
 
 export declare type GalleryVerbs = ReturnType<typeof createGalleryVerbs>;
@@ -2746,6 +2776,8 @@ export declare interface TileAction {
     icon: string;
     title: string;
     state?: "ready" | "none" | "unknown";
+    /** 0.8.8：库自己放的钮（宿主没给 tileAction 时）：resolve = 「处理…」→ verbs.resolve；宿主的钮没有这个字段。 */
+    verb?: "resolve";
 }
 
 export declare function tileFor(item: GItem, opts: {

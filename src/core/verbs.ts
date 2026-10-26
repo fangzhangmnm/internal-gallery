@@ -179,18 +179,23 @@ export function createGalleryVerbs(d: VerbDeps) {
    *  处理完若换了世界线 / 进了回收站，让宿主重开（d.doc.open）。 */
   async function resolve(item: GItem): Promise<void> {
     const isActive = item.identifier === d.host.activeIdentifier();
-    await d.host.busy(t("gal.busy.resolve", { name: item.stem }), async () => {
-      try {
-        if (isActive) await d.doc.exit();
-        const r = await docFile(item.identifier).resolve();
-        const key = r.status === "took-cloud" ? "gal.st.resolve.tookCloud" : r.status === "pushed" ? "gal.st.resolve.pushed" : r.status === "trashed" ? "gal.st.resolve.trashed"
-          : r.status === "cancelled" ? "gal.st.resolve.cancelled" : r.status === "clean" ? "gal.st.resolve.clean" : r.status === "offline" ? "gal.st.resolve.offline" : "gal.st.resolve.unresolved";
-        const bad = key === "gal.st.resolve.offline" || key === "gal.st.resolve.unresolved";
-        d.host.status(t(key, { name: item.stem, e: r.reason ?? r.status }), bad);
-        if (isActive && (r.status === "took-cloud" || r.status === "trashed") && d.doc.open) await d.doc.open(item);
-      } catch (e: unknown) { d.host.status(t("gal.st.resolve.unresolved", { name: item.stem, e: errMsg(e) }), true); }
-    });
+    // 0.8.8：**不包在宿主 busy 里**——`file.resolve()` 中途要弹面问人；宿主的 busy 要是一层模态遮罩，面就被挡死（CatsUp 2026-10-25 iPad 截图
+    //   「没处理成：…sheet "choice" opened while busy overlay is active (would deadlock)…」；WXHW 同病，周账 F-91）。推 / 拉的忙碌提示店库自己有
+    //   busy 键（sync.pushing / file.pulling / cloud.checking），宿主按键路由；这里只管状态行。防双击：同一份在飞时再点一次直接忽略。
+    if (_resolving.has(item.identifier)) return;
+    _resolving.add(item.identifier);
+    try {
+      if (isActive) await d.doc.exit();
+      const r = await docFile(item.identifier).resolve();
+      const key = r.status === "took-cloud" ? "gal.st.resolve.tookCloud" : r.status === "pushed" ? "gal.st.resolve.pushed" : r.status === "trashed" ? "gal.st.resolve.trashed"
+        : r.status === "cancelled" ? "gal.st.resolve.cancelled" : r.status === "clean" ? "gal.st.resolve.clean" : r.status === "offline" ? "gal.st.resolve.offline" : "gal.st.resolve.unresolved";
+      const bad = key === "gal.st.resolve.offline" || key === "gal.st.resolve.unresolved";
+      d.host.status(t(key, { name: item.stem, e: r.reason ?? r.status }), bad);
+      if (isActive && (r.status === "took-cloud" || r.status === "trashed") && d.doc.open) await d.doc.open(item);
+    } catch (e: unknown) { d.host.status(t("gal.st.resolve.unresolved", { name: item.stem, e: errMsg(e) }), true); }
+    finally { _resolving.delete(item.identifier); }
   }
+  const _resolving = new Set<string>();
 
   /** 删除 = 移回收站（store 的 `file.trash()`）；诚实读 TrashOutcome（cancelled / noop / 只删了本地 都不许报「已删除」）。 */
   async function del(item: GItem): Promise<void> {
