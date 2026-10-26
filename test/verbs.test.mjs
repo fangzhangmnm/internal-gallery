@@ -208,3 +208,23 @@ describe("verbs · keepOffline（0.3.0，JRB：纯云端件不打开就囤一份
     const last = statuses.pop(); eq(last[1], true); eq(last[0], t("gal.st.keepOfflineFail", { e: "offline" }));
   });
 });
+
+// 0.8.9：改名 / 移动降级成另存时如实说（周账 F-92；store tryMove 的 oldKept 等旗以前被吞 → 报「已重命名」= 谎报）。created 2026-10-26 by Claude Fable 5.1
+describe("verbs · 改名 / 移动的回执不谎报（0.8.9）", () => {
+  it("tryMove 回 oldKept → 状态行说「旧的没动」且算错误级；正常 → 「已重命名」", async () => {
+    let r = mk({ file: { tryMove: async () => ({ ok: true, where: "cloud-push+kept", oldKept: true, oldName: "a.ora" }) }, inputs: ["b"] });
+    await r.verbs.rename(item("a.ora"));
+    const [msg, err] = r.statuses.pop(); eq(err, true, "错误级"); eq(/没动|untouched/.test(msg), true, "说了旧的没动：" + msg);
+    r = mk({ file: { tryMove: async () => ({ ok: true, where: "cloud-move" }) }, inputs: ["b"] });
+    await r.verbs.rename(item("a.ora"));
+    eq(r.statuses.pop()[0], t("gal.st.renamed", { to: "b" }));
+  });
+  it("oldCloudOrphan / oldUnknown 也如实说；cloudDeferred 说还没推上去（非错误）", async () => {
+    let r = mk({ file: { tryMove: async () => ({ ok: true, where: "cloud-push+trash", oldCloudOrphan: true, oldName: "a.ora" }) }, inputs: ["b"] });
+    await r.verbs.rename(item("a.ora")); eq(/没能进回收站|could not be moved/.test(r.statuses.pop()[0]), true);
+    r = mk({ file: { tryMove: async () => ({ ok: true, where: "cloud-push+unknown", oldUnknown: true, oldName: "a.ora" }) }, inputs: ["b"] });
+    await r.verbs.rename(item("a.ora")); eq(/可能还在|may still/.test(r.statuses.pop()[0]), true);
+    r = mk({ file: { tryMove: async () => ({ ok: true, where: "local", cloudDeferred: true }) }, inputs: ["b"] });
+    await r.verbs.rename(item("a.ora")); const [m, e] = r.statuses.pop(); eq(e, false, "不是错误"); eq(/还没推上去|not pushed/.test(m), true);
+  });
+});

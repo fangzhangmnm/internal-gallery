@@ -1512,6 +1512,26 @@ export declare const GALLERY_TEXT: {
         readonly en: "Renamed: {from} → {to}";
         readonly ja: "名前変更：{from} → {to}";
     };
+    readonly "gal.st.movedOldKept": {
+        readonly zh: "已另存为「{to}」；云端那份「{from}」没动（它和这台的改动对不上，或不知道这台派生自哪一版）—— 图库里还看得见，不要了自己送回收站";
+        readonly en: "Saved as “{to}”; the cloud copy “{from}” was left untouched (it diverged from this device, or this device's lineage is unknown) — it is still listed; trash it yourself if you do not want it";
+        readonly ja: "「{to}」として保存しました。クラウドの「{from}」はそのまま（この端末の変更と食い違う、または系譜不明）——一覧に残っています。不要なら自分でゴミ箱へ";
+    };
+    readonly "gal.st.movedOldOrphan": {
+        readonly zh: "已改成「{to}」，但云端旧的「{from}」没能进回收站 —— 图库里还看得见，自己处理";
+        readonly en: "Now “{to}”, but the old cloud copy “{from}” could not be moved to the trash — it is still listed; handle it yourself";
+        readonly ja: "「{to}」になりましたが、クラウドの旧「{from}」をゴミ箱へ移せませんでした——一覧に残っています";
+    };
+    readonly "gal.st.movedOldUnknown": {
+        readonly zh: "已改成「{to}」；云端状态没问到，旧的「{from}」可能还在云端";
+        readonly en: "Now “{to}”; the cloud could not be checked, so the old “{from}” may still be there";
+        readonly ja: "「{to}」になりました。クラウドを確認できず、旧「{from}」が残っている可能性があります";
+    };
+    readonly "gal.st.movedCloudDeferred": {
+        readonly zh: "已改成「{to}」（本机）；云端那份还没推上去，下次保存补推";
+        readonly en: "Now “{to}” on this device; the cloud copy is not pushed yet (next save will)";
+        readonly ja: "「{to}」になりました（この端末）。クラウドへはまだ未送信、次回保存時に送ります";
+    };
     readonly "gal.st.restoreFail": {
         readonly zh: "恢复失败：{e}";
         readonly en: "Restore failed: {e}";
@@ -2843,6 +2863,12 @@ export declare interface VerbEncryption {
 export declare interface VerbFile {
     tryMove(to: string): Promise<{
         ok: true;
+        where?: string;
+        oldKept?: boolean;
+        oldCloudOrphan?: boolean;
+        oldUnknown?: boolean;
+        cloudDeferred?: boolean;
+        oldName?: string;
     } | {
         ok: false;
         where: "local" | "cloud";

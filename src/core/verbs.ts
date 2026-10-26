@@ -35,7 +35,7 @@ export interface VerbDoc {
   dropCheckpoint(identifier: string): Promise<void> | void;
 }
 export interface VerbFile {
-  tryMove(to: string): Promise<{ ok: true } | { ok: false; where: "local" | "cloud" }>;
+  tryMove(to: string): Promise<{ ok: true; where?: string; oldKept?: boolean; oldCloudOrphan?: boolean; oldUnknown?: boolean; cloudDeferred?: boolean; oldName?: string } | { ok: false; where: "local" | "cloud" }>;   // 0.8.9：ok:true 时带 store TryMoveResult 的四面旗（谎报守卫 afterMoveStatus 读）
   /** 0.8.5：store 2.1.2 把 `delete()` 改叫 `trash()`（词对准语义：移进回收站；user 2026-10-17「改trash……属于bugfix」）。 */
   trash(): Promise<{ status: string; queuedCloudDelete?: boolean }>;
   /** 0.7.2：store 0.18 的 file.resolve()——库问人三选一（云端覆盖本地 / 本地覆盖云端 / 取消），图库「处理…」唯一的后端。 */
@@ -112,7 +112,7 @@ export function createGalleryVerbs(d: VerbDeps) {
         try {
           const r = await docFile(item.identifier).tryMove(target);   // 占用检查内化在 store.tryMove，不动字节直接返错
           if (!r.ok) return { taken: whereLabel(r.where) };
-          d.host.status(t("gal.st.renamed", { to: shownTarget }));
+          afterMoveStatus(r, t("gal.st.renamed", { to: shownTarget }), item.stem, shownTarget);
           return { ok: true };
         } catch (e: unknown) { return { error: errMsg(e) }; }
       });
@@ -122,6 +122,16 @@ export function createGalleryVerbs(d: VerbDeps) {
     }
   }
 
+  /** 0.8.9（2026-10-26，家族周账 F-92「重命名会多出一份」已复现）：store `tryMove` 在谱系不明 / 云端被别的设备改过时把改名 / 移动**降级成另存**——
+   *  新身份推上去、云端旧的原地不动（store 2026-07-18 逃生通道语义：不敢把用户没见过的工作挪进回收站）。库把 oldKept / oldCloudOrphan / oldUnknown / cloudDeferred
+   *  旗都给了（store 注释原话「全被吞掉 = UI 谎报成功」），以前这里只看 ok → 报「已重命名」。现在如实说：旧的还在云端、图库里还看得见（纯云端一行），不要了自己送回收站。 */
+  function afterMoveStatus(r: { oldKept?: boolean; oldCloudOrphan?: boolean; oldUnknown?: boolean; cloudDeferred?: boolean }, okText: string, from: string, to: string): void {
+    if (r.oldKept) d.host.status(t("gal.st.movedOldKept", { from, to }), true);
+    else if (r.oldCloudOrphan) d.host.status(t("gal.st.movedOldOrphan", { from, to }), true);
+    else if (r.oldUnknown) d.host.status(t("gal.st.movedOldUnknown", { from, to }), true);
+    else if (r.cloudDeferred) d.host.status(t("gal.st.movedCloudDeferred", { to }));
+    else d.host.status(okText);
+  }
   /** 移动目标只有「上级 + 当前可见子夹」——用手上的单夹数据，绝不 poll 全树。 */
   function moveTargets(item: GItem, ctx: { folder: string; folderNames: string[] }): string[] {
     const cur = pathFolder(item.identifier);
@@ -144,7 +154,7 @@ export function createGalleryVerbs(d: VerbDeps) {
         const r = await docFile(item.identifier).tryMove(newIdentifier);
         if (!r.ok) { d.host.status(t("gal.st.nameTakenTarget", { loc: whereLabel(r.where), base }), true); return; }
         if (item.identifier === d.host.activeIdentifier()) d.doc.setIdentifier(newIdentifier);
-        d.host.status(t("gal.st.moved", { target: target || t("gal.root") }));
+        afterMoveStatus(r, t("gal.st.moved", { target: target || t("gal.root") }), item.stem, item.stem);   // 0.8.9：移动同样可能降级成「另存」（旧的留在原夹）
       } catch (e: unknown) { d.host.status(t("gal.st.moveFail", { e: errMsg(e) }), true); }
     });
   }
