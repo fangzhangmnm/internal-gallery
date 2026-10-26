@@ -228,3 +228,17 @@ describe("verbs · 改名 / 移动的回执不谎报（0.8.9）", () => {
     await r.verbs.rename(item("a.ora")); const [m, e] = r.statuses.pop(); eq(e, false, "不是错误"); eq(/还没推上去|not pushed/.test(m), true);
   });
 });
+
+// 0.8.10：改名撞上谱系不明先问人（store 2.2.2 ui.resolveRenameOld）：取消 = 没动、状态「这次没动」；人选「留着」= 非错误级的「照你的意思留着」。created 2026-10-26 by Claude Fable 5.1
+describe("verbs · 改名问人之后的回执（0.8.10）", () => {
+  it("tryMove 回 cancelled → 状态「这次没动」，不再问名字", async () => {
+    const r = mk({ file: { tryMove: async () => ({ ok: false, reason: "cancelled" }) }, inputs: ["b", "c"] });
+    await r.verbs.rename(item("a.ora"));
+    eq(r.statuses.pop()[0], t("gal.st.cancelled")); eq(r.calls.filter((c) => c[0] === "input").length, 1, "只问过一次名字");
+  });
+  it("tryMove 回 oldKeptByUser → 非错误级「照你的意思留着」", async () => {
+    const r = mk({ file: { tryMove: async () => ({ ok: true, where: "cloud-push+kept", oldKept: true, oldKeptByUser: true, oldName: "a.ora" }) }, inputs: ["b"] });
+    await r.verbs.rename(item("a.ora"));
+    const [m, e] = r.statuses.pop(); eq(e, false, "不是错误"); eq(/照你的意思|as you chose/.test(m), true, m);
+  });
+});

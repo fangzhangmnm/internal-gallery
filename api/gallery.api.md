@@ -1707,6 +1707,41 @@ export const GALLERY_TEXT: {
         readonly en: "Now “{to}”; the cloud could not be checked, so the old “{from}” may still be there";
         readonly ja: "「{to}」になりました。クラウドを確認できず、旧「{from}」が残っている可能性があります";
     };
+    readonly "gal.st.movedOldKeptByUser": {
+        readonly zh: "已另存为「{to}」；照你的意思，云端那份「{from}」留着没动";
+        readonly en: "Saved as “{to}”; as you chose, the cloud copy “{from}” was left in place";
+        readonly ja: "「{to}」として保存しました。選択どおりクラウドの「{from}」はそのまま残しています";
+    };
+    readonly "rn.title": {
+        readonly zh: "「{name}」云端那份和这台的对不上";
+        readonly en: "“{name}”: the cloud copy does not match this device";
+        readonly ja: "「{name}」：クラウドの版がこの端末と合いません";
+    };
+    readonly "rn.body.diverged": {
+        readonly zh: "你要把「{from}」改名成「{to}」，但云端的「{from}」被别的设备改过、这台的改动还没传上去。新名字「{to}」会传上去；云端那份旧的要搬进回收站（能恢复），还是留着（两份都在）？";
+        readonly en: "You are renaming “{from}” to “{to}”, but the cloud copy of “{from}” was changed on another device and this device's edits are not uploaded. “{to}” will be uploaded; should the old cloud copy go to the trash (recoverable) or stay (both kept)?";
+        readonly ja: "「{from}」を「{to}」に改名しますが、クラウドの「{from}」は別の端末で変更されており、この端末の変更は未送信です。「{to}」は送信します。クラウドの旧版はゴミ箱へ（復元可）、それとも残しますか（両方残る）？";
+    };
+    readonly "rn.body.unknown": {
+        readonly zh: "你要把「{from}」改名成「{to}」，但这台不知道自己这份是从云端哪一版改出来的。新名字「{to}」会传上去；云端那份旧的要搬进回收站（能恢复），还是留着（两份都在）？";
+        readonly en: "You are renaming “{from}” to “{to}”, but this device cannot tell which cloud version its copy came from. “{to}” will be uploaded; should the old cloud copy go to the trash (recoverable) or stay (both kept)?";
+        readonly ja: "「{from}」を「{to}」に改名しますが、この端末の版がクラウドのどの版から来たのか分かりません。「{to}」は送信します。クラウドの旧版はゴミ箱へ（復元可）、それとも残しますか（両方残る）？";
+    };
+    readonly "rn.note": {
+        readonly zh: "搬进回收站不是删除，随时能恢复。取消 = 不改名，什么都不动。";
+        readonly en: "Trash is not delete; it can be restored any time. Cancel = no rename, nothing changes.";
+        readonly ja: "ゴミ箱は削除ではなく、いつでも復元できます。キャンセル＝改名せず何も変えません。";
+    };
+    readonly "rn.act.trash": {
+        readonly zh: "搬走旧的（进回收站）";
+        readonly en: "Move the old one to trash";
+        readonly ja: "旧版をゴミ箱へ";
+    };
+    readonly "rn.act.keep": {
+        readonly zh: "留着旧的";
+        readonly en: "Keep the old one";
+        readonly ja: "旧版を残す";
+    };
     readonly "gal.st.movedCloudDeferred": {
         readonly zh: "已改成「{to}」（本机）；云端那份还没推上去，下次保存补推";
         readonly en: "Now “{to}” on this device; the cloud copy is not pushed yet (next save will)";
@@ -3221,13 +3256,15 @@ export interface VerbFile {
         ok: true;
         where?: string;
         oldKept?: boolean;
+        oldKeptByUser?: boolean;
         oldCloudOrphan?: boolean;
         oldUnknown?: boolean;
         cloudDeferred?: boolean;
         oldName?: string;
     } | {
         ok: false;
-        where: "local" | "cloud";
+        reason?: "name-collision" | "cancelled";
+        where?: "local" | "cloud";
     }>;
 }
 

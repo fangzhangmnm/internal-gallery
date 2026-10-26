@@ -57,6 +57,16 @@ export function storeUIFor(d: StoreUIDeps): StoreUI {
             actions: [{ label: t("cf.act.cloudWins"), value: "takeCloud", primary: true }, { label: t("cf.act.localWins"), value: "keepMine" }, { label: t("common.cancel"), value: "cancel" }] });
       return choice ?? "cancel";
     },
+    // 0.8.10（store 2.2.2；user 2026-10-26「同意，反正不删就行了」）：改名 / 移动撞上「不知道云端旧的该不该搬」→ 先问人。搬走 = 进回收站（可恢复），不是删。
+    resolveRenameOld: async ({ oldName, newName, reason }: { oldName: string; newName: string; reason: "diverged" | "unknown-lineage" }) => {
+      const choice = await d.sheets.lockSyncGate<"trash" | "keep" | "cancel">({
+        title: t("rn.title", { name: bare(oldName) }),
+        message: reason === "diverged" ? t("rn.body.diverged", { from: bare(oldName), to: bare(newName) }) : t("rn.body.unknown", { from: bare(oldName), to: bare(newName) }),
+        note: t("rn.note"), showSpinner: false,
+        actions: [{ label: t("rn.act.trash"), value: "trash", primary: true }, { label: t("rn.act.keep"), value: "keep" }, { label: t("common.cancel"), value: "cancel" }],
+      });
+      return choice ?? "cancel";
+    },
     reportError: (err, level) => {
       if ((err as { name?: string } | null)?.name === "CloudNetworkError") { d.reportError(err, "log"); d.reportError(new Error(t("err.cloudNetwork")), level ?? "error"); return; }
       d.reportError(err, level ?? "error");
