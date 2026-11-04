@@ -2660,7 +2660,6 @@ export interface GalleryTile {
     badgeTitle: string;
     // (undocumented)
     cloudNewer: boolean;
-    // (undocumented)
     encrypted: boolean;
     // (undocumented)
     ghost: boolean;

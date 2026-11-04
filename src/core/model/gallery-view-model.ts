@@ -49,7 +49,9 @@ export interface GalleryTile {
   ghost: boolean;        // cloud-gone dirty 孤儿（云端 path 被别的设备改名/删，本地有未推编辑）→ UI surface
   pendingGone: boolean;  // cloud-gone clean 孤儿、防抖 grace 内（照常显示 + badge；宽限后自动移入回收站；可「重新上传」/「删除」）
   isActive: boolean;
-  encrypted: boolean;    // 本地字节是加密容器（ADR-0012），由 gallery 按夹探测注入。纯云端项未知（thumb 拉回时按 MIME 现场识别）
+  /** 加密态（ADR-0012），调用方注入。0.8.11 起 = 本地字节是加密容器 ∨ store 给的事实说它加密（getPeek 回密文 peek），取或；
+   *  0.8.10 及以前只看本地字节、按名字记一次不再看。屏幕层的判定在 core/model/encryption-state.ts。 */
+  encrypted: boolean;
   /** 0.8.8：这份**没同步好、要人处理**（登录态下 float / dirtyBoth / conflictBoth / ghost / pendingGone）——卡片上给可见的「处理…」钮、顶部横幅计数。
    *  localOnly（干净、从没传过）不算：store `resolve()` 对它回 clean、没有可做的事；newerOnCloud 也不算：打开就自动快进。 */
   attention: boolean;
@@ -81,7 +83,7 @@ export function tileFor(
     ghost: s === "ghost",
     pendingGone: s === "pendingGone",
     isActive: !!opts.activeIdentifier && item.identifier === opts.activeIdentifier,
-    // 加密态由调用方探测后注入（store 的 Item 内容盲、没有 encrypted 轴）。
+    // 加密态由调用方判定后注入（store 的 Item 内容盲、没有 encrypted 轴；判定 = 本地字节 ∨ store 的事实，见 encryption-state.ts）。
     encrypted: !!opts.encrypted,
     attention: opts.signedIn && ATTENTION_BADGES.has(badge),
   };

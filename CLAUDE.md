@@ -22,3 +22,5 @@
 - **改名 / 移动的回执不谎报（0.8.9，2026-10-26；周账 F-92「重命名会多出一份」已复现）**：store `tryMove` 在谱系不明 / 云端被别的设备改过时把改名 / 移动降级成**另存**（新身份推上去、云端旧的原地不动 = store 07-18 逃生通道语义），旗 `oldKept / oldCloudOrphan / oldUnknown / cloudDeferred` 以前被 `verbs.rename / move` 吞掉 → 报「已重命名」。现在 `afterMoveStatus` 如实说（文案 `gal.st.movedOld*`），`VerbFile.tryMove` 类型带旗。要不要进一步「改名撞上谱系不明先弹面问搬不搬旧的」= 方向词汇问题，等 user。added by Claude Fable 5.1 2026-10-26
 
 - **改名撞上谱系不明先问人（0.8.10，2026-10-26；store 2.2.2；user「同意，反正不删就行了」）**：`storeUIFor` 接 `resolveRenameOld`——面「搬走旧的（进回收站）/ 留着旧的 / 取消」（文案 `rn.*`）；`verbs.rename / move` 认 `cancelled`（「这次没动」）和 `oldKeptByUser`（非错误级「照你的意思留着」）。宿主自带 store-ui 的（CatsUp / WXHW / JRB）要各自接回调。added by Claude Fable 5.1 2026-10-26
+
+- **加密态只判一处、取或、按版本（0.8.11，2026-11-04；Fable 派单，出处 CatsUp 11-03 报告 C2 / C3 追加）**：`src/core/model/encryption-state.ts`——加密态 = 本地字节说加密 ∨ store 的事实说加密（今天 = getPeek 的密文 peek；搁置区 = TrashItem.encrypted），结论绑「syncState + 修改时间 + 大小」，版本变了重探。已知加密 → 格子不显示任何明文图（含拉不到时退回来的旧图）、缓存里的明文封面 / 事实当场删。别处不许再自己判加密。**缺一路**：活文件的云端名带不带 `.zip`，store 的 Item 没给（截至 2.2.5），纯云端没开过、没有密文 peek 的（CatsUp）首开前仍显示不加密——等 store 带出来再接。详 `ai-docs/20261104-0.8.11-encrypted-state-display.md`。added by Claude Opus 5.5 2026-11-04

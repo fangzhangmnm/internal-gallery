@@ -19,6 +19,7 @@ import "./aside.test.mjs";
 import "./verbs.test.mjs";
 import "./thumb-cache.test.mjs";
 import "./facts-cache.test.mjs";
+import "./encryption-state.test.mjs";   // 0.8.11 加密态取或 + 明文副产品作废
 import "./png-text.test.mjs";
 import "./make-thumb.test.mjs";
 import "./templates-compiled.test.mjs";   // 0.8.4 预编译模板不许过期

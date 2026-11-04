@@ -8,6 +8,7 @@ import { tileFor, breadcrumb, asideTileFor, humanTime, humanSize, fullTime, hasL
 import { ASIDE, type AsideItem, type AsideKind, type AsideScope } from "../core/model/aside.ts";
 import { pathJoin } from "../core/model/gallery-path.ts";
 import { imageThumbToken, imageTwinIdentifier, mimeForImageName } from "../core/model/cloud-image-model.ts";
+import { createEncryptionState, encVersionOf, encryptionMenu, admitThumbBlob, dropPlainByproducts, type EncFacts } from "../core/model/encryption-state.ts";
 import { createFrameGate } from "../core/guards/frame-gate.ts";
 import { createFirstFrameWatchdog } from "../core/guards/first-frame-watchdog.ts";
 import { note as diagNote } from "../core/guards/diag-log.ts";
@@ -209,21 +210,26 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
 
   const ThumbCell = defineComponent({
     name: "ThumbCell",
-    props: { encName: { type: String, default: null }, fetchable: { type: Boolean, default: false }, isCloud: { type: Boolean, default: false }, cloudNewer: { type: Boolean, default: false }, thumbToken: { type: String, default: "" }, fallback: { type: String, default: "?" }, fallbackHtml: { type: String, default: "" }, alt: { type: String, default: "" } },
-    emits: ["unlock"],
-    setup(props: { encName: string | null; fetchable: boolean; isCloud: boolean; cloudNewer: boolean; thumbToken: string; fallback: string; fallbackHtml: string; alt: string }) {
+    // 0.8.11：sealed = 已知这份是加密的（本地字节 ∨ store 的事实，见 core/model/encryption-state.ts）。已知加密 → 明文图一律不显示（现拉的、缓存命中的、拉不到时退回来的旧图都算），
+    //   已经显示着的明文图当场撤掉；拿到密文 peek 就 emit("sealed") 把这个事实报给图库（卡片的锁 / 菜单跟着变）。
+    props: { encName: { type: String, default: null }, fetchable: { type: Boolean, default: false }, isCloud: { type: Boolean, default: false }, cloudNewer: { type: Boolean, default: false }, thumbToken: { type: String, default: "" }, fallback: { type: String, default: "?" }, fallbackHtml: { type: String, default: "" }, alt: { type: String, default: "" }, sealed: { type: Boolean, default: false } },
+    emits: ["unlock", "sealed"],
+    setup(props: { encName: string | null; fetchable: boolean; isCloud: boolean; cloudNewer: boolean; thumbToken: string; fallback: string; fallbackHtml: string; alt: string; sealed: boolean }, ctx: { emit: (event: string, ...args: unknown[]) => void }) {
       const url = ref<string | null>(null), showCloud = ref(false), locked = ref(false), root = ref<HTMLElement | null>(null);
       let cloudEncBlob: Blob | null = null, objUrl: string | null = null, obs: IntersectionObserver | null = null;
+      let shownPlain = false;   // 0.8.11：当前显示的是不是一张没经过解密的明文图（已知加密时要撤）
       const blurb = ref("");
       // 0.2.0：缩略图 PNG 自带的 Description 文本块 = 腰封 / caption → 悬停 tooltip（user 2026-09-10「thumbnail.png 的标准 tEXt 文本块…gallery 库的公共行为」）
       const readBlurb = (blob: Blob) => { void blob.arrayBuffer().then((ab) => { const u8 = new Uint8Array(ab); blurb.value = isPng(u8) ? (readPngText(u8)[PNG_BLURB_KEYWORD] ?? "") : ""; }).catch(() => { blurb.value = ""; }); };
-      const setBlob = (blob: Blob) => { if (objUrl) URL.revokeObjectURL(objUrl); objUrl = URL.createObjectURL(blob); url.value = objUrl; readBlurb(blob); };
+      const setBlob = (blob: Blob, plain: boolean) => { if (objUrl) URL.revokeObjectURL(objUrl); objUrl = URL.createObjectURL(blob); url.value = objUrl; shownPlain = plain; readBlurb(blob); };
+      const clearShown = () => { if (objUrl) URL.revokeObjectURL(objUrl); objUrl = null; url.value = null; blurb.value = ""; shownPlain = false; };
       const tryDecrypt = async () => {
+        if (shownPlain) clearShown();   // 0.8.11：转进加密那条路之前，明文时代显示着的那张先撤（解不开时模板的 v-if="url" 会盖过锁）
         if (!enc) { locked.value = true; return; }
         let png: Blob | null = null;
         if (props.encName) png = await enc.localPeekThumb(props.encName);
         else if (cloudEncBlob) png = await enc.decryptCloudPeekThumb(props.alt, cloudEncBlob);
-        if (png && png.size > 0) { locked.value = false; setBlob(png); }
+        if (png && png.size > 0) { locked.value = false; setBlob(png, false); }
         else if (enc.isUnlocked()) locked.value = false;   // 0.2.1：解锁了但这本没封面 → 占位图标，不是锁（锁只表示「解不开」）
         else locked.value = true;
       };
@@ -232,7 +238,14 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         if (!d.thumbs) return;   // 无缩略图政策（WXHW 2.0）→ 保持占位
         const seq = ++fetchSeq;
         d.thumbs.getOrFetch(props.alt, props.thumbToken, props.cloudNewer ? "cloud" : "local")
-          .then(({ blob }) => { if (seq !== fetchSeq) return; showCloud.value = false; if (!blob) return; /* 0.2.2：确定没缩略图 → 占位图标（书），不是云 */ if (enc?.isEncryptedPeekBlob(blob)) { cloudEncBlob = blob; return tryDecrypt(); } setBlob(blob); })
+          .then(({ blob }) => {
+            if (seq !== fetchSeq) return; showCloud.value = false;
+            if (!blob) return;   // 0.2.2：确定没缩略图 → 占位图标（书），不是云
+            const verdict = admitThumbBlob(blob, { sealed: props.sealed, isEncryptedPeekBlob: enc ? (b) => enc.isEncryptedPeekBlob(b) : undefined });
+            if (verdict === "enc-peek") { cloudEncBlob = blob; ctx.emit("sealed"); return tryDecrypt(); }
+            if (verdict === "refuse") { if (shownPlain) clearShown(); return; }   // 0.8.11：已知加密 → 明文图不显示、不退回
+            setBlob(blob, true);
+          })
           .catch((err: unknown) => d.reportError(new Error("[gallery] thumb: " + String(err)), "log"));
       };
       onMounted(() => {
@@ -244,6 +257,13 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         }
       });
       watch(() => _lockState.unlocked, () => { if (locked.value || props.encName) void tryDecrypt(); });
+      // 0.8.11：图库刚知道这份是加密的 → 显示着的明文图当场撤；本地字节变成容器（encName 来了）→ 走本地解密那条；容器变回明文（encName 走了）→ 按普通图重拉
+      watch(() => props.sealed, () => { if (props.sealed && shownPlain) clearShown(); });
+      watch(() => props.encName, () => {
+        if (props.encName) { void tryDecrypt(); return; }
+        cloudEncBlob = null; locked.value = false;
+        if (props.fetchable && !obs) fetchThumb();
+      });
       watch(() => [props.thumbToken, props.cloudNewer, _thumbRev.get(thumbKey(props.alt)) ?? 0], () => {
         if (props.encName) { void tryDecrypt(); return; }
         if (!props.fetchable || obs) return;
@@ -342,18 +362,33 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       document.addEventListener("pointerup", _onGatePtrUp, true);
       document.addEventListener("pointercancel", _onGatePtrUp, true);
 
-      const encByName = reactive<Record<string, boolean>>({});
-      async function probeEncrypted() {
-        if (!enc) return;
-        for (const nm of data.files.filter((it) => hasLocalCopy(it.syncState)).map((it) => it.identifier)) {
-          if (nm in encByName) continue;
-          try { encByName[nm] = await enc.isEncrypted(nm); } catch { encByName[nm] = false; }
+      // 0.8.11 加密态（core/model/encryption-state.ts）：本地字节 ∨ store 的事实，结论绑版本戳。
+      //   以前是 encByName：按名字探一次本地字节就永远记着——别的设备加密、这台快进拿到容器之后还说「没加密」。现在版本变了就重探。
+      const encState = createEncryptionState(reactive<Record<string, EncFacts>>({}));
+      let _probing: Promise<void> | null = null, _probeAgain = false;
+      async function probeOnce(): Promise<void> {
+        for (const it of data.files) {
+          const v = encVersionOf(it);
+          if (!encState.needsLocalProbe(it.identifier, v)) continue;
+          if (!hasLocalCopy(it.syncState)) { encState.noteLocal(it.identifier, v, false); continue; }   // 本地没字节：本地这一路不说加密（云端那一路另算）
+          let r = false;
+          try { r = await enc!.isEncrypted(it.identifier); } catch { r = false; }
+          encState.noteLocal(it.identifier, v, r);
         }
       }
-      function invalidateEncrypted(name: string) { delete encByName[name]; void probeEncrypted(); }
+      /** 串行：同一时刻只有一趟在探；探的时候又来了新帧 → 这一趟完了再按最新的列表补一趟（防旧版本的结论晚到、盖掉新版本的）。 */
+      function probeEncrypted(): Promise<void> {
+        if (!enc) return Promise.resolve();
+        if (_probing) { _probeAgain = true; return _probing; }
+        _probing = (async () => { try { do { _probeAgain = false; await probeOnce(); } while (_probeAgain); } finally { _probing = null; } })();
+        return _probing;
+      }
+      function invalidateEncrypted(name: string) { encState.forget(name); void probeEncrypted(); }
+      /** 格子拿到了 store 的密文 peek = store 说这一版是加密容器。 */
+      function notePeekSealed(item: GItem) { encState.notePeek(item.identifier, encVersionOf(item)); }
       async function requestUnlock(): Promise<boolean> {
         await probeEncrypted();
-        for (const it of data.files) { if (!hasLocalCopy(it.syncState) || !encByName[it.identifier]) continue; return await verbs.unlock(it.identifier); }
+        for (const it of data.files) { if (!hasLocalCopy(it.syncState) || !encState.isLocalEncrypted(it.identifier, encVersionOf(it))) continue; return await verbs.unlock(it.identifier); }
         return false;
       }
       // 搁置区列表：一次性读（不订阅）。序号守卫：连点切换视图时，晚到的旧结果不许盖掉新视图。
@@ -389,7 +424,14 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const folderTiles = computed(() => data.folderNames.map((fn) => ({ name: fn, path: pathJoin(folder.value, fn) })));
       // 0.8.8：要处理的卡片，宿主没放钮的话库自己放一粒可见的「处理…」（user 2026-10-26「处理的东西应该图库上多一个按钮图示……只有非常小的云图标提示……在...里面」）
       const attentionAction = (tile: GalleryTile): TileAction | null => tile.attention ? { icon: "cloud-pending", title: t("gal.resolve"), state: "ready", verb: "resolve" } : null;
-      const fileTiles = computed(() => data.files.map((it) => { const tile = tileFor(it, { signedIn: d.host.signedIn(), activeIdentifier: d.host.activeIdentifier(), encrypted: !!encByName[it.identifier] }); const info = fileInfo(it), facts = factsOf(it.identifier); return { item: it, t: tile, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.identifier, info, facts), thumb: hasThumb(it.kind), info, facts, act: actionOf(it.identifier, info, facts) ?? attentionAction(tile) }; }));
+      // 0.8.11：t.encrypted = 加密态（本地字节 ∨ store 的事实）→ 锁、不显示明文封面、不取 / 不给事实；encLocal = 只看本地字节（本地解密封面那条路、「解除加密…」）。
+      const fileTiles = computed(() => data.files.map((it) => {
+        const encV = encVersionOf(it), encrypted = encState.isEncrypted(it.identifier, encV), encLocal = encState.isLocalEncrypted(it.identifier, encV);
+        const tile = tileFor(it, { signedIn: d.host.signedIn(), activeIdentifier: d.host.activeIdentifier(), encrypted });
+        const info = fileInfo(it), facts = encrypted ? null : factsOf(it.identifier);   // 加密件的事实是明文时代留下的 → 不给宿主画
+        const encMenu = encryptionMenu({ hasEncryption: !!enc, hasLocal: tile.hasLocal, encrypted, localEncrypted: encLocal });
+        return { item: it, t: tile, encV, encLocal, encMenu, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.identifier, info, facts), thumb: hasThumb(it.kind), info, facts, act: actionOf(it.identifier, info, facts) ?? attentionAction(tile) };
+      }));
       // 0.8.8：顶部横幅「有 N 份要处理 → 看列表」+ 只看要处理的（user「你一开始说批量处理我以为的是给你一个列表你当时就立刻点」——列表 = 这几张卡，每张一粒「处理…」，点了当场弹面）
       const attentionWanted = ref(false);   // 宿主 / 用户要的；帧还没到时也能先记下（setAttentionOnly(true) 紧跟 open()）
       const attentionCount = computed(() => fileTiles.value.reduce((n, r) => n + (r.t.attention ? 1 : 0), 0));
@@ -402,6 +444,23 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       // 0.8.0：列表一变就把该取的事实排上（加密件不取：尾读到的是密文）；事实到了 _facts 变 → fileTiles 重算 → 钮 / 覆盖层跟着
       const askFacts = () => { if (!d.facts) return; for (const r of fileTiles.value) if (!r.t.encrypted && (r.t.hasCloud || r.t.hasLocal)) wantFacts(r.t.identifier, r.item.kind, String(r.t.time || r.t.size || 0), r.t.cloudNewer ? "cloud" : "local"); };
       watch(() => fileTiles.value, askFacts); askFacts();
+      // 0.8.11：一知道这份（这一版）是加密的，派生缓存里加密之前留下的明文副产品立刻删——不等格子滚到眼前、不等拉到新图（CatsUp 2026-11-03 报告 C2「还留一个缝」）。
+      //   每份每版只删一次（删 = 缓存 invalidate，会广播让格子重来；只删一次防来回）。
+      const _plainDropped = new Set<string>();
+      const dropKnownEncryptedPlain = () => {
+        if (!enc || (!d.thumbs && !d.facts)) return;
+        for (const r of fileTiles.value) {
+          if (!r.t.encrypted) continue;
+          const k = `${r.t.identifier}\u0000${r.encV}`;
+          if (_plainDropped.has(k)) continue;
+          _plainDropped.add(k);
+          const id = r.t.identifier;
+          void dropPlainByproducts(id, { thumbs: d.thumbs, facts: d.facts, isEncryptedPeekBlob: (b) => enc.isEncryptedPeekBlob(b) })
+            .then((x) => { if (x.facts) _facts.delete(id); if (x.thumb || x.facts) diagNote("gallery", `dropped plaintext byproducts of an encrypted file: thumb=${x.thumb} facts=${x.facts}`); })
+            .catch((err: unknown) => d.reportError(new Error("[gallery] drop plaintext byproducts: " + String(err)), "log"));
+        }
+      };
+      watch(() => fileTiles.value, dropKnownEncryptedPlain); dropKnownEncryptedPlain();
       // 搁置区卡片：取不取缩略图、时间后面跟哪个词，按 item 自带的 kind 查 ASIDE 表
       const asideTiles = computed(() => aside.value.map((it) => ({ item: it, t: asideTileFor(it), fetch: ASIDE[it.box].thumb === "by-name" && hasThumb(it.kind), atWord: t(ASIDE[it.box].text.at), ov: it.kind != null ? ovHtml(it.identifier, asideInfo(it)) : "", info: asideInfo(it) })));
       const imageTiles = computed(() => data.images.map((im) => ({ raw: im, identifier: im.identifier, label: im.label, size: im.size || 0, time: im.lastModified || 0, token: imageThumbToken(im) })));
@@ -501,7 +560,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         attentionOnly, attentionCount, attentionText, setAttentionOnly, toggleAttentionOnly: () => setAttentionOnly(!attentionWanted.value),   // 0.8.8
         badgeIcon, fmtMeta, humanTime, fullTime, ICON, toggleMenu, menuMount: el, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
         openTile, tileAction, openImageTile, deleteImage, rename, move, copy, resolve, unload, keepOffline, del, folderDelete, asideRestore, asidePurge, emptyAside,
-        encryptItem, decryptItem, onUnlock, requestUnlock, hasEncryption: !!enc,
+        encryptItem, decryptItem, onUnlock, requestUnlock, hasEncryption: !!enc, notePeekSealed,
         reload, setView: (v: GalleryView) => { view.value = v; void reload(); },
       };
     },

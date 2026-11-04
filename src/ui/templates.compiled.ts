@@ -319,16 +319,18 @@ export function galleryRender(Vue: any): any {
                   onClick: $event => (_ctx.openTile(row.item))
                 }, [
                   _createVNode(_component_ThumbCell, {
-                    "enc-name": row.t.encrypted && row.thumb ? row.t.identifier : null,
-                    fetchable: !row.t.encrypted && (row.t.hasCloud || row.t.hasLocal) && row.thumb,
+                    "enc-name": row.encLocal && row.thumb ? row.t.identifier : null,
+                    fetchable: !row.encLocal && (row.t.hasCloud || row.t.hasLocal) && row.thumb,
+                    sealed: row.t.encrypted,
                     "is-cloud": !row.t.hasLocal && row.t.hasCloud,
                     "cloud-newer": row.t.cloudNewer,
                     "thumb-token": String(row.t.time || row.t.size || 0),
                     fallback: row.t.stem.slice(0,1) || '?',
                     "fallback-html": _ctx.phHtml(row.t.identifier, row.info),
                     alt: row.t.identifier,
-                    onUnlock: _ctx.onUnlock
-                  }, null, 8 /* PROPS */, ["enc-name", "fetchable", "is-cloud", "cloud-newer", "thumb-token", "fallback", "fallback-html", "alt", "onUnlock"]),
+                    onUnlock: _ctx.onUnlock,
+                    onSealed: $event => (_ctx.notePeekSealed(row.item))
+                  }, null, 8 /* PROPS */, ["enc-name", "fetchable", "sealed", "is-cloud", "cloud-newer", "thumb-token", "fallback", "fallback-html", "alt", "onUnlock", "onSealed"]),
                   (row.ov)
                     ? (_openBlock(), _createElementBlock("span", {
                         key: 0,
@@ -563,7 +565,7 @@ export function galleryRender(Vue: any): any {
                                     _createElementVNode("span", null, _toDisplayString(_ctx.L.unloadLocal), 1 /* TEXT */)
                                   ], 8 /* PROPS */, _hoisted_44))
                                 : _createCommentVNode("v-if", true),
-                              (_ctx.hasEncryption && row.t.hasLocal && !row.t.encrypted)
+                              (row.encMenu.encrypt)
                                 ? (_openBlock(), _createElementBlock("button", {
                                     key: 4,
                                     type: "button",
@@ -578,7 +580,7 @@ export function galleryRender(Vue: any): any {
                                     _createElementVNode("span", null, _toDisplayString(_ctx.L.encrypt), 1 /* TEXT */)
                                   ], 8 /* PROPS */, _hoisted_45))
                                 : _createCommentVNode("v-if", true),
-                              (_ctx.hasEncryption && row.t.hasLocal && row.t.encrypted)
+                              (row.encMenu.decrypt)
                                 ? (_openBlock(), _createElementBlock("button", {
                                     key: 5,
                                     type: "button",
@@ -708,12 +710,13 @@ export function galleryRender(Vue: any): any {
               }, [
                 _createVNode(_component_ThumbCell, {
                   fetchable: row.fetch,
+                  sealed: row.item.encrypted,
                   "is-cloud": row.fetch && row.item.side==='cloud',
                   "thumb-token": "0",
                   fallback: row.t.stem.slice(0,1) || '?',
                   "fallback-html": row.item.kind != null ? _ctx.phHtml(row.t.identifier, row.info) : '',
                   alt: row.t.identifier
-                }, null, 8 /* PROPS */, ["fetchable", "is-cloud", "fallback", "fallback-html", "alt"]),
+                }, null, 8 /* PROPS */, ["fetchable", "sealed", "is-cloud", "fallback", "fallback-html", "alt"]),
                 (row.ov)
                   ? (_openBlock(), _createElementBlock("span", {
                       key: 0,

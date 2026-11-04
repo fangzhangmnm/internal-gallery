@@ -2441,6 +2441,8 @@ export declare interface GalleryTile {
     ghost: boolean;
     pendingGone: boolean;
     isActive: boolean;
+    /** 加密态（ADR-0012），调用方注入。0.8.11 起 = 本地字节是加密容器 ∨ store 给的事实说它加密（getPeek 回密文 peek），取或；
+     *  0.8.10 及以前只看本地字节、按名字记一次不再看。屏幕层的判定在 core/model/encryption-state.ts。 */
     encrypted: boolean;
     /** 0.8.8：这份**没同步好、要人处理**（登录态下 float / dirtyBoth / conflictBoth / ghost / pendingGone）——卡片上给可见的「处理…」钮、顶部横幅计数。
      *  localOnly（干净、从没传过）不算：store `resolve()` 对它回 clean、没有可做的事；newerOnCloud 也不算：打开就自动快进。 */

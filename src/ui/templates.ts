@@ -18,6 +18,8 @@ export const IMAGE_THUMB_CELL_TEMPLATE = `
     <div v-else class="gallery-tile-thumb placeholder" ref="root">{{ fallback }}</div>`;
 
 // 模板逐字自 WeebPaint gallery.ts v0.14.9（class 名不变，宿主 CSS 直接生效）；唯一增补：加密菜单项加 v-if="hasEncryption"。
+// 0.8.11（Claude Opus 5.5 2026-11-04）：row.t.encrypted 改成加密态（本地字节 ∨ store 的事实）；本地解密封面那条路和「解除加密…」看 row.encLocal；
+//   加密两项的给不给收进 row.encMenu（core/model/encryption-state.ts encryptionMenu）；格子多一个 sealed（已知加密 → 明文图不显示）+ @sealed（密文 peek 报回来）。
 export const GALLERY_TEMPLATE = `
       <div class="gallery-breadcrumb" :class="{ hidden: !folder }" v-if="view==='files'">
         <template v-for="(c,i) in crumbs" :key="c.path">
@@ -64,7 +66,7 @@ export const GALLERY_TEMPLATE = `
           </div>
 
           <div v-for="row in shownFileTiles" :key="row.t.identifier" class="gallery-tile" :class="{ active: row.t.isActive, encrypted: row.t.encrypted, attention: row.t.attention }" @click="openTile(row.item)">
-            <ThumbCell :enc-name="row.t.encrypted && row.thumb ? row.t.identifier : null" :fetchable="!row.t.encrypted && (row.t.hasCloud || row.t.hasLocal) && row.thumb" :is-cloud="!row.t.hasLocal && row.t.hasCloud" :cloud-newer="row.t.cloudNewer" :thumb-token="String(row.t.time || row.t.size || 0)" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="phHtml(row.t.identifier, row.info)" :alt="row.t.identifier" @unlock="onUnlock" />
+            <ThumbCell :enc-name="row.encLocal && row.thumb ? row.t.identifier : null" :fetchable="!row.encLocal && (row.t.hasCloud || row.t.hasLocal) && row.thumb" :sealed="row.t.encrypted" :is-cloud="!row.t.hasLocal && row.t.hasCloud" :cloud-newer="row.t.cloudNewer" :thumb-token="String(row.t.time || row.t.size || 0)" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="phHtml(row.t.identifier, row.info)" :alt="row.t.identifier" @unlock="onUnlock" @sealed="notePeekSealed(row.item)" />
             <span v-if="row.ov" class="gallery-tile-overlay" v-html="row.ov"></span>
             <span v-if="row.act" class="gallery-tile-action-slot"><button type="button" class="gallery-tile-action" :class="[row.act.state || 'ready', row.act.verb ? 'verb-' + row.act.verb : '']" :title="row.act.title" :aria-label="row.act.title" @click.stop="tileAction(row)" @pointerdown.stop><span class="gallery-tile-action-ico" v-html="badgeIcon2(row.act.icon)"></span><span v-if="row.act.verb" class="gallery-tile-action-label">{{ row.act.title }}</span></button></span>
             <span v-if="row.t.encrypted" class="gallery-tile-lockmark" :title="L.encrypted" v-html="ICON.lock"></span>
@@ -100,8 +102,8 @@ export const GALLERY_TEMPLATE = `
                 <button v-if="row.t.badge==='cloudOnly'" type="button" @click="keepOffline(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#local-cache"/></svg><span>{{ L.keepOffline }}</span></button>
                 <button v-if="row.t.badge==='localOnly' || row.t.badge==='float' || row.t.badge==='dirtyBoth' || row.t.badge==='conflictBoth'" type="button" @click="resolve(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cloud-pending"/></svg><span>{{ L.resolve }}</span></button>
                 <button v-if="row.t.hasLocal && row.t.hasCloud" type="button" @click="unload(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#unload-local-cache"/></svg><span>{{ L.unloadLocal }}</span></button>
-                <button v-if="hasEncryption && row.t.hasLocal && !row.t.encrypted" type="button" @click="encryptItem(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#lock"/></svg><span>{{ L.encrypt }}</span></button>
-                <button v-if="hasEncryption && row.t.hasLocal && row.t.encrypted" type="button" @click="decryptItem(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#unlock"/></svg><span>{{ L.decrypt }}</span></button>
+                <button v-if="row.encMenu.encrypt" type="button" @click="encryptItem(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#lock"/></svg><span>{{ L.encrypt }}</span></button>
+                <button v-if="row.encMenu.decrypt" type="button" @click="decryptItem(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#unlock"/></svg><span>{{ L.decrypt }}</span></button>
                 <button type="button" class="danger" @click="del(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.toTrash }}</span></button>
               </template>
             </div></Teleport>
@@ -135,7 +137,7 @@ export const GALLERY_TEMPLATE = `
 
         <template v-if="view!=='files' && !loading">
           <div v-for="row in asideTiles" :key="row.t.key" class="gallery-tile aside" :class="['aside-' + row.item.box, { encrypted: row.item.encrypted }]">
-            <ThumbCell :fetchable="row.fetch" :is-cloud="row.fetch && row.item.side==='cloud'" thumb-token="0" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="row.item.kind != null ? phHtml(row.t.identifier, row.info) : ''" :alt="row.t.identifier" />
+            <ThumbCell :fetchable="row.fetch" :sealed="row.item.encrypted" :is-cloud="row.fetch && row.item.side==='cloud'" thumb-token="0" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="row.item.kind != null ? phHtml(row.t.identifier, row.info) : ''" :alt="row.t.identifier" />
             <span v-if="row.ov" class="gallery-tile-overlay" v-html="row.ov"></span>
             <span v-if="row.item.encrypted" class="gallery-tile-lockmark" :title="L.encrypted" v-html="ICON.lock"></span>
             <div class="gallery-tile-name-row">

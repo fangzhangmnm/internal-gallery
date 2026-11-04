@@ -5,6 +5,8 @@
 // 0.2.2 否定结果（WXHW 2026-09-10 user「thumb 不是用来显示 cloud status 的地方，应该是书，未知的话是另外一回事可以显示云」）：
 //   fetch 返 **null = 确定没有缩略图**（到达了但 entry 不存在）→ 照样进缓存（{token, blob:null}），下次同 token 命中不重拉；
 //   fetch **抛 = 未知**（够不着 / 离线）→ 不写缓存、退旧值；屏幕侧只有这种才给云端-only 的卡显示云。
+// 0.8.11（Claude Opus 5.5 2026-11-04）：「退旧图」对**已知加密**的那份不算数——格子拿到明文图一律不显示（core/model/encryption-state.ts admitThumbBlob），
+//   缓存里加密之前那张明文条目由屏幕层一知道就删（dropPlainByproducts）。本模块自己不认识加密，照旧只按 token。
 import type { ThumbStore } from "./thumb-store.ts";
 
 export interface CachedThumb { token: string; blob: Blob | null; at: number; }
