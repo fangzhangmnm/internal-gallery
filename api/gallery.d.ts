@@ -3176,6 +3176,9 @@ export declare interface VerbDoc {
     /** 0.7.2：「处理…」处理的是正在打开的那份且换了世界线 / 进了回收站 → 让宿主重开（GalleryDocHost 必有 open；VerbDoc 层可选）。 */
     open?(item: GItem): Promise<void>;
     dropCheckpoint(identifier: string): Promise<void> | void;
+    /** 0.9.1：把正开着的那份内存里的改动落到本机——**不关它、不退回图库、不推云**。「存一版」拿的是存下来的字节，正开着的那份先过这里。
+     *  宿主没给 = 不落（那一版 = 上次存下的样子）。⚠ 这不是 exit：exit 会把人从画布踢回图库（0.9.0 的存一版错用了它）。 */
+    flush?(): Promise<void>;
 }
 
 export declare interface VerbEncryption {

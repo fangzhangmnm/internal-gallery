@@ -34,6 +34,9 @@ export interface VerbDoc {
   /** 0.7.2：「处理…」处理的是正在打开的那份且换了世界线 / 进了回收站 → 让宿主重开（GalleryDocHost 必有 open；VerbDoc 层可选）。 */
   open?(item: GItem): Promise<void>;
   dropCheckpoint(identifier: string): Promise<void> | void;
+  /** 0.9.1：把正开着的那份内存里的改动落到本机——**不关它、不退回图库、不推云**。「存一版」拿的是存下来的字节，正开着的那份先过这里。
+   *  宿主没给 = 不落（那一版 = 上次存下的样子）。⚠ 这不是 exit：exit 会把人从画布踢回图库（0.9.0 的存一版错用了它）。 */
+  flush?(): Promise<void>;
 }
 export interface VerbFile {
   tryMove(to: string): Promise<{ ok: true; where?: string; oldKept?: boolean; oldKeptByUser?: boolean; oldCloudOrphan?: boolean; oldUnknown?: boolean; cloudDeferred?: boolean; oldName?: string } | { ok: false; reason?: "name-collision" | "cancelled"; where?: "local" | "cloud" }>;   // 0.8.9：ok:true 时带 store TryMoveResult 的四面旗（谎报守卫 afterMoveStatus 读）
@@ -389,12 +392,12 @@ export function createGalleryVerbs(d: VerbDeps) {
   }
   /** 存一版 = 复制一份，名字 `<原主干>.backup-<今天>`（同一天再存 `-2`…），和原作同一个文件夹，生来锁着（规则 = core/model/versions.ts）。
    *  mode "new" = 多一份；"replace-last" = 存到上一版：**先存成新的、成了才把上一份送进回收站**（顺序不能反：先有新的再丢旧的）；上一版加了星 → 留着不动、如实说。
-   *  字节 = 这份作品已经存下的样子（atRestBytes：加密件原样搬密文）；正开着的那份先让编辑器落盘（d.doc.exit，同「处理…」）。
+   *  字节 = 这份作品已经存下的样子（atRestBytes：加密件原样搬密文）；正开着的那份先让编辑器落盘（d.doc.flush：只落盘、不关画）。
    *  siblings = 当前夹的作品（起名去重、找上一版用）。存成 → 新那一版的身份；没存成 → null（状态行已经说了为什么）。opts.now 只给测试。 */
   async function saveVersion(item: GItem, mode: "new" | "replace-last", siblings: readonly GItem[], opts: { now?: Date } = {}): Promise<string | null> {
     return d.host.busy(t("gal.busy.version", { base: item.stem }), async (): Promise<string | null> => {
       try {
-        if (item.identifier === d.host.activeIdentifier()) await d.doc.exit();
+        if (item.identifier === d.host.activeIdentifier()) await d.doc.flush?.();   // 0.9.1：只落盘，不关画（0.9.0 这里调 exit，在画布上点「存一版再改」会把人踢回图库）
         const got = await atRestBytes(item);
         if (got.why === "sealed-no-local") { d.host.status(t("gal.st.sealedNoLocal"), true); return null; }
         if (!got.bytes) { d.host.status(t("gal.st.copyNoBytes"), true); return null; }

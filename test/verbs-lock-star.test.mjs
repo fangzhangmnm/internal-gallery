@@ -12,7 +12,7 @@ class StarredError extends Error { constructor() { super("starred"); this.name =
 class CloudNameCollisionError extends Error { constructor() { super("occupied"); this.name = "CloudNameCollisionError"; } }
 
 /** 假库：files[identifier] = { enc?, plain?, starred?, pullsContainer? }；记下每一步（顺序要紧：先存新的再丢旧的）。 */
-function mk({ files = {}, active = null, marks = true, lock = true, cloudOccupied = [], signedIn = true } = {}) {
+function mk({ files = {}, active = null, marks = true, lock = true, cloudOccupied = [], signedIn = true, flush = true } = {}) {
   const log = [], statuses = [];
   const store = {
     identifiers: IDS,
@@ -30,7 +30,8 @@ function mk({ files = {}, active = null, marks = true, lock = true, cloudOccupie
   };
   const host = { signedIn: () => signedIn, online: () => true, activeIdentifier: () => active, confirm: async () => { log.push(["confirm"]); return true; }, input: async () => null, chooseFolder: async () => null,
     status: (m, e) => statuses.push([m, !!e]), busy: async (_l, fn) => fn() };
-  const doc = { renameActive: async () => null, setIdentifier: () => {}, push: async () => {}, unload: async () => {}, exit: async () => { log.push(["exit"]); }, dropCheckpoint: () => {} };
+  const doc = { renameActive: async () => null, setIdentifier: () => {}, push: async () => {}, unload: async () => {}, exit: async () => { log.push(["exit"]); }, dropCheckpoint: () => {},
+    ...(flush ? { flush: async () => { log.push(["flush"]); } } : {}) };
   return { verbs: createGalleryVerbs({ store: () => store, host, doc }), log, statuses, files };
 }
 const NOW = new Date(2026, 10, 8, 22, 0);
@@ -77,10 +78,14 @@ describe("verbs · 存一版", () => {
     await r.verbs.saveVersion(item("猫.ora"), "replace-last", [item("猫.ora")], { now: NOW });
     eq(ops(r.log), "save:猫.backup-20261108.ora");
   });
-  it("正开着的那份：先让编辑器落盘再复制", async () => {
+  it("正开着的那份：先让编辑器落盘再复制——只落盘（flush），绝不退出（0.9.0 调了 exit，在画布上点「存一版再改」把人踢回图库）", async () => {
     const r = mk({ files: { "猫.ora": { plain: blob("画") } }, active: "猫.ora" });
     await r.verbs.saveVersion(item("猫.ora"), "new", [item("猫.ora")], { now: NOW });
-    eq(ops(r.log), "exit: > save:猫.backup-20261108.ora");
+    eq(ops(r.log), "flush: > save:猫.backup-20261108.ora");
+    assert(!r.log.some((l) => l[0] === "exit"), "没有退出");
+    const r2 = mk({ files: { "猫.ora": { plain: blob("画") } }, active: "猫.ora", flush: false });   // 宿主没给 flush：不落、也不退出
+    await r2.verbs.saveVersion(item("猫.ora"), "new", [item("猫.ora")], { now: NOW });
+    eq(ops(r2.log), "save:猫.backup-20261108.ora");
   });
   it("给一版再存一版 = 还是那份原作的版本（不叠标记）", async () => {
     const sib = [item("猫.ora"), item("猫.backup-20261105.ora")];

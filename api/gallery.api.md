@@ -3475,6 +3475,7 @@ export interface VerbDoc {
     dropCheckpoint(identifier: string): Promise<void> | void;
     // (undocumented)
     exit(): Promise<void>;
+    flush?(): Promise<void>;
     open?(item: GItem): Promise<void>;
     push(item: GItem): Promise<void>;
     renameActive(): Promise<string | null>;
