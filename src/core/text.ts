@@ -163,6 +163,8 @@ export const GALLERY_TEXT = {
   "gal.st.unfolded": { zh: "已取消收起：{name}", en: "Brought back: {name}", ja: "しまうのをやめました：{name}" },
   "gal.st.marksFail": { zh: "没改成：{e}", en: "Could not change it: {e}", ja: "変更できませんでした：{e}" },
   "gal.st.starredNoDel": { zh: "「{name}」加了星：先撤星，才能送进回收站", en: "“{name}” is starred: remove the star before moving it to trash", ja: "「{name}」はスター付きです。先にスターを外してからゴミ箱に入れてください" },
+  "gal.st.starredNoPurge": { zh: "「{name}」加了星，没有彻底删：先还原它，或者撤了星再删", en: "“{name}” is starred and was not deleted for good: restore it, or remove the star first", ja: "「{name}」はスター付きのため完全削除していません。復元するか、スターを外してから削除してください" },
+  "gal.st.emptyKeptStarred": { zh: "已清空（{label}）；留下 {n} 份加了星的没清——可以还原，或者撤了星再清", en: "Emptied ({label}); {n} starred item(s) were kept — restore them, or remove the star first", ja: "空にしました（{label}）。スター付きの {n} 件は残してあります（復元するか、スターを外してください）" },
   "gal.st.resolve.starred": { zh: "「{name}」加了星，两边都没动：先撤星，才能选「云端覆盖本地」把这份送进回收站", en: "“{name}” is starred, nothing was changed: remove the star before choosing “Cloud overwrites local” (which moves this copy to trash)", ja: "「{name}」はスター付きのため何も変更していません。先にスターを外してください" },
   "gal.attention.banner": { zh: "有 {n} 份没同步好，要你处理", en: "{n} file(s) need your attention (not in sync)", ja: "{n} 件が未同期・対応が必要です" },
   "gal.attention.showing": { zh: "只看要处理的（{n} 份）", en: "Showing only the {n} that need attention", ja: "対応が必要な {n} 件のみ表示中" },

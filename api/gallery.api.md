@@ -26,7 +26,9 @@ export interface AsideEmptyResult {
     // (undocumented)
     failed?: {
         where?: string;
-    }[];
+    }[]; /** store 2.3.1：清空回收站时留下没清的（加了星的不连坐）。 */
+    // (undocumented)
+    kept?: unknown[];
 }
 
 // @public
@@ -765,6 +767,14 @@ export type FoldRow = {
     key: string;
     count: number;
     open: boolean;
+}
+/** 0.9.2：图片 / 认不出来的文件——不能收起，和文件夹一样把细条隔开。 */
+| {
+    type: "image";
+    identifier: string;
+} | {
+    type: "other";
+    identifier: string;
 };
 
 // @public (undocumented)
@@ -1612,6 +1622,16 @@ export const GALLERY_TEXT: {
         readonly zh: "「{name}」加了星：先撤星，才能送进回收站";
         readonly en: "“{name}” is starred: remove the star before moving it to trash";
         readonly ja: "「{name}」はスター付きです。先にスターを外してからゴミ箱に入れてください";
+    };
+    readonly "gal.st.starredNoPurge": {
+        readonly zh: "「{name}」加了星，没有彻底删：先还原它，或者撤了星再删";
+        readonly en: "“{name}” is starred and was not deleted for good: restore it, or remove the star first";
+        readonly ja: "「{name}」はスター付きのため完全削除していません。復元するか、スターを外してから削除してください";
+    };
+    readonly "gal.st.emptyKeptStarred": {
+        readonly zh: "已清空（{label}）；留下 {n} 份加了星的没清——可以还原，或者撤了星再清";
+        readonly en: "Emptied ({label}); {n} starred item(s) were kept — restore them, or remove the star first";
+        readonly ja: "空にしました（{label}）。スター付きの {n} 件は残してあります（復元するか、スターを外してください）";
     };
     readonly "gal.st.resolve.starred": {
         readonly zh: "「{name}」加了星，两边都没动：先撤星，才能选「云端覆盖本地」把这份送进回收站";
@@ -3070,7 +3090,7 @@ export interface MakeThumbOpts {
 export function memoryThumbStore(): ThumbStore;
 
 // @public
-export function mergeTimeline(items: readonly GItem[], folderNames: readonly string[]): TimelineEntry[];
+export function mergeTimeline(items: readonly GItem[], folderNames: readonly string[], images?: readonly TimelineFile[], others?: readonly TimelineFile[]): TimelineEntry[];
 
 // @public
 export function mimeForImageName(name: string): string;
@@ -3247,6 +3267,9 @@ export function snapshotFolderOnce(watch: WatchFolderFn, folder: string, opts?: 
 
 // @public
 export const SOLE_GALLERY_ID = "default";
+
+// @public
+export const sortNameOfFile: (label: string) => string;
 
 // @public
 export const spillName: (path: string) => string;
@@ -3443,7 +3466,21 @@ export type TimelineEntry = {
 } | {
     type: "doc";
     item: GItem;
+} | {
+    type: "image";
+    file: TimelineFile;
+} | {
+    type: "other";
+    file: TimelineFile;
 };
+
+// @public
+export interface TimelineFile {
+    // (undocumented)
+    identifier: string;
+    // (undocumented)
+    label: string;
+}
 
 // @public
 function toText(): string;

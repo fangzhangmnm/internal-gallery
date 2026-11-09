@@ -479,6 +479,8 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       }));
       // 0.8.12：作品和文件夹合成一列（顺序 = 数据面给的 timeline，规则只在 core/model/timeline-order.ts）；文件夹不再单独钉在最上面。
       //   一行要么是文件夹（ft 有值），要么是作品（ft = null，其余字段同上）；模板按 ft 分叉。
+      const imageTiles = computed(() => data.images.map((im) => ({ raw: im, identifier: im.identifier, label: im.label, size: im.size || 0, time: im.lastModified || 0, token: imageThumbToken(im) })));
+      const otherTiles = computed(() => data.others.map((o) => ({ identifier: o.identifier, label: o.label, size: o.size || 0, time: o.lastModified || 0 })));
       // 0.9.0 收起（core/model/fold-groups.ts）：存下来的各版收在原作那一格底下（+N）、手动收起的挨着合成一条细条；点开原地摊开——屏幕上的临时状态，不落盘。
       //   一行多一种：细条（strip 有值）。
       const expanded = reactive(new Set<string>());
@@ -488,10 +490,14 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const timelineRows = computed(() => {
         const byId = new Map(fileTiles.value.map((r) => [r.t.identifier, r] as const));
         type FileRow = (typeof fileTiles.value)[number];
-        const rows: ({ key: string; ft: { name: string; path: string }; strip: null } | { key: string; ft: null; strip: { open: boolean; label: string } } | FileRow)[] = [];
+        const imById = new Map(imageTiles.value.map((x) => [x.identifier, x] as const)), otById = new Map(otherTiles.value.map((x) => [x.identifier, x] as const));
+        const rows: ({ key: string; ft: { name: string; path: string }; strip: null } | { key: string; ft: null; strip: { open: boolean; label: string } }
+          | { key: string; ft: null; strip: null; im: (typeof imageTiles.value)[number] } | { key: string; ft: null; strip: null; ot: (typeof otherTiles.value)[number] } | FileRow)[] = [];
         for (const e of foldTimeline(data.timeline, { isOpen: (k) => expanded.has(k), expandAll: expandAll.value })) {
           if (e.type === "folder") { const path = pathJoin(folder.value, e.name); rows.push({ key: "F:" + path, ft: { name: e.name, path }, strip: null }); }
           else if (e.type === "strip") rows.push({ key: e.key, ft: null, strip: { open: e.open, label: t(e.open ? "gal.fold.stripOpen" : "gal.fold.strip", { n: e.count }) } });
+          else if (e.type === "image") { const im = imById.get(e.identifier); if (im) rows.push({ key: "I:" + e.identifier, ft: null, strip: null, im }); }   // 0.9.2：图片 / 杂物也在时间线里
+          else if (e.type === "other") { const ot = otById.get(e.identifier); if (ot) rows.push({ key: "O:" + e.identifier, ft: null, strip: null, ot }); }
           else { const r = byId.get(e.item.identifier); if (r) rows.push({ ...r, dim: e.dim, nVersions: e.versions.length, versionsOpen: e.versionsOpen }); }
         }
         return rows;
@@ -532,8 +538,6 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       watch(() => fileTiles.value, dropKnownEncryptedPlain); dropKnownEncryptedPlain();
       // 搁置区卡片：取不取缩略图、时间后面跟哪个词，按 item 自带的 kind 查 ASIDE 表
       const asideTiles = computed(() => aside.value.map((it) => ({ item: it, t: asideTileFor(it), fetch: ASIDE[it.box].thumb === "by-name" && hasThumb(it.kind), atWord: t(ASIDE[it.box].text.at), ov: it.kind != null ? ovHtml(it.identifier, asideInfo(it)) : "", info: asideInfo(it) })));
-      const imageTiles = computed(() => data.images.map((im) => ({ raw: im, identifier: im.identifier, label: im.label, size: im.size || 0, time: im.lastModified || 0, token: imageThumbToken(im) })));
-      const otherTiles = computed(() => data.others.map((o) => ({ identifier: o.identifier, label: o.label, size: o.size || 0, time: o.lastModified || 0 })));
       const crumbs = computed(() => breadcrumb(folder.value));
       const isEmpty = computed(() => view.value !== "files" ? asideTiles.value.length === 0 : folderTiles.value.length === 0 && fileTiles.value.length === 0 && imageTiles.value.length === 0 && otherTiles.value.length === 0);
       const emptyText = computed(() => view.value !== "files" ? t(ASIDE[view.value].text.none) : folder.value ? t("gal.empty.folder", { f: folder.value }) : t("gal.empty.none"));

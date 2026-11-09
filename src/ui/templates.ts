@@ -76,6 +76,32 @@ export const GALLERY_TEMPLATE = `
           <!-- 0.9.0 收起的细条：就在它们原来的时间线位置；点一下原地摊开、再点收回（摊开不等于取消收起） -->
           <button v-else-if="row.strip" type="button" class="gallery-fold-strip" :class="{ open: row.strip.open }" @click="toggleFold(row.key)"><span class="gallery-fold-strip-ico" v-html="ICON.fold"></span><span>{{ row.strip.label }}</span></button>
 
+          <!-- 0.9.2：图片 / 认不出来的文件也在这一条时间线里（日期比文件类型优先） -->
+          <div v-else-if="row.im" class="gallery-tile image-file" @click="openImageTile(row.im.raw)">
+            <ImageThumbCell :identifier="row.im.identifier" :token="row.im.token" :fallback="row.im.label.slice(0,1) || '?'" :alt="row.im.label" />
+            <div class="gallery-tile-name-row">
+              <div class="gallery-tile-name" :title="row.im.identifier">{{ row.im.label }}</div>
+              <div class="gallery-tile-meta">
+                <span class="gallery-tile-state-icon" :title="L.imageFile" v-html="ICON.image"></span>
+                <span>{{ fmtMeta({ time: row.im.time, size: row.im.size }) }}</span>
+              </div>
+            </div>
+            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu('I:'+row.im.identifier, $event)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
+            <Teleport :to="menuMount"><div class="gallery-tile-menu-popup hidden" :data-menu="'I:'+row.im.identifier" @click.stop>
+              <button type="button" class="danger" @click="deleteImage(row.im.raw)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.toTrash }}</span></button>
+            </div></Teleport>
+          </div>
+          <div v-else-if="row.ot" class="gallery-tile other-file">
+            <div class="gallery-tile-thumb" v-html="ICON.file"></div>
+            <div class="gallery-tile-name-row">
+              <div class="gallery-tile-name" :title="row.ot.identifier">{{ row.ot.label }}</div>
+              <div class="gallery-tile-meta">
+                <span class="gallery-tile-state-icon" :title="L.otherFile" v-html="ICON.file"></span>
+                <span>{{ fmtMeta({ time: row.ot.time, size: row.ot.size }) }}</span>
+              </div>
+            </div>
+          </div>
+
           <div v-else class="gallery-tile" :class="{ active: row.t.isActive, encrypted: row.t.encrypted, attention: row.t.attention, starred: row.t.starred, dim: row.dim }" @click="openTile(row.item)">
             <ThumbCell :enc-name="row.encLocal && row.thumb ? row.t.identifier : null" :fetchable="!row.encLocal && (row.t.hasCloud || row.t.hasLocal) && row.thumb" :sealed="row.t.encrypted" :is-cloud="!row.t.hasLocal && row.t.hasCloud" :cloud-newer="row.t.cloudNewer" :thumb-token="String(row.t.time || row.t.size || 0)" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="phHtml(row.t.identifier, row.info)" :alt="row.t.identifier" @unlock="onUnlock" @sealed="notePeekSealed(row.item)" />
             <span v-if="row.ov" class="gallery-tile-overlay" v-html="row.ov"></span>
@@ -136,30 +162,6 @@ export const GALLERY_TEMPLATE = `
           </div>
           </template>
 
-          <div v-for="im in (attentionOnly ? [] : imageTiles)" :key="'I:'+im.identifier" class="gallery-tile image-file" @click="openImageTile(im.raw)">
-            <ImageThumbCell :identifier="im.identifier" :token="im.token" :fallback="im.label.slice(0,1) || '?'" :alt="im.label" />
-            <div class="gallery-tile-name-row">
-              <div class="gallery-tile-name" :title="im.identifier">{{ im.label }}</div>
-              <div class="gallery-tile-meta">
-                <span class="gallery-tile-state-icon" :title="L.imageFile" v-html="ICON.image"></span>
-                <span>{{ fmtMeta({ time: im.time, size: im.size }) }}</span>
-              </div>
-            </div>
-            <button type="button" class="gallery-tile-menu-btn" :aria-label="L.more" @click.stop="toggleMenu('I:'+im.identifier, $event)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#more"/></svg></button>
-            <Teleport :to="menuMount"><div class="gallery-tile-menu-popup hidden" :data-menu="'I:'+im.identifier" @click.stop>
-              <button type="button" class="danger" @click="deleteImage(im.raw)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#trash-can"/></svg><span>{{ L.toTrash }}</span></button>
-            </div></Teleport>
-          </div>
-          <div v-for="ot in (attentionOnly ? [] : otherTiles)" :key="'O:'+ot.identifier" class="gallery-tile other-file">
-            <div class="gallery-tile-thumb" v-html="ICON.file"></div>
-            <div class="gallery-tile-name-row">
-              <div class="gallery-tile-name" :title="ot.identifier">{{ ot.label }}</div>
-              <div class="gallery-tile-meta">
-                <span class="gallery-tile-state-icon" :title="L.otherFile" v-html="ICON.file"></span>
-                <span>{{ fmtMeta({ time: ot.time, size: ot.size }) }}</span>
-              </div>
-            </div>
-          </div>
         </template>
 
         <template v-if="view!=='files' && !loading">

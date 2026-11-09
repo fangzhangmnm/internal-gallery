@@ -17,7 +17,10 @@ export type FoldRow =
   /** 一格作品。versions = 收在它底下的各版（新的在前）；versionsOpen = 它们现在摊开着（紧跟在后面的几行就是）；dim = 这一格是摊开出来的（收起项 / 版本）。 */
   | { type: "doc"; item: GItem; versions: GItem[]; versionsOpen: boolean; dim: boolean; versionOf: string | null }
   /** 一条细条：这里收起了 count 份。open = 现在摊开着（紧跟在后面的 count 行就是）。key = 展开状态用的键。 */
-  | { type: "strip"; key: string; count: number; open: boolean };
+  | { type: "strip"; key: string; count: number; open: boolean }
+  /** 0.9.2：图片 / 认不出来的文件——不能收起，和文件夹一样把细条隔开。 */
+  | { type: "image"; identifier: string }
+  | { type: "other"; identifier: string };
 
 /** 展开状态的键：细条 = "S:" + 这一串里第一份的身份；原作的各版 = "V:" + 原作的身份。 */
 export const stripKey = (firstIdentifier: string): string => `S:${firstIdentifier}`;
@@ -48,6 +51,7 @@ export function foldTimeline(timeline: readonly TimelineEntry[], o: { isOpen: (k
   };
   for (const e of timeline) {
     if (e.type === "folder") { flush(); rows.push({ type: "folder", name: e.name }); continue; }
+    if (e.type === "image" || e.type === "other") { flush(); rows.push({ type: e.type, identifier: e.file.identifier }); continue; }
     const it = e.item;
     if (attached.has(it.identifier)) continue;                       // ① 跟着原作走
     if (it.folded || parseVersionStem(it.stem)) { run.push(it); continue; }   // ② 手动收起的 / 原作不在的版本

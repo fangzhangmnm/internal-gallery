@@ -38,7 +38,7 @@ export interface AsideItem {
   conflictLive: boolean;
 }
 
-export interface AsideEmptyResult { failed?: { where?: string }[] }
+export interface AsideEmptyResult { failed?: { where?: string }[]; /** store 2.3.1：清空回收站时留下没清的（加了星的不连坐）。 */ kept?: unknown[] }
 /** 表里的函数能看见的 store.files 子集。 */
 export interface AsideFiles {
   listTrash(): Promise<TrashItem[]>;

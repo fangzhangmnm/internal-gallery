@@ -70,7 +70,8 @@ export function createGalleryDataFace(deps: { store: () => DataFaceStore | null;
       return st.files.watchFolder(folder, (snap) => {
         const items = snap.items.map((it) => galleryItemFromStoreItem(it, ids)).filter((g): g is GItem => g != null).sort((a, b) => timelineCompare(a.stem, b.stem) || naturalCompare(b.identifier, a.identifier));
         const folderNames = folderNamesOf(folder, snap.folders);
-        cb({ folder: snap.folder, items, images: toImageItems(snap.items, ids), others: toOtherItems(snap.items, ids), folderNames, timeline: mergeTimeline(items, folderNames) });
+        const images = toImageItems(snap.items, ids), others = toOtherItems(snap.items, ids);
+        cb({ folder: snap.folder, items, images, others, folderNames, timeline: mergeTimeline(items, folderNames, images, others) });   // 0.9.2：图片 / 杂物也在时间线里（images / others 两个数组自己的顺序不变，别的消费方照旧）
       }, opts);
     },
     watchFolderImages(folder: string, cb: (snap: { folder: string; images: CloudImageItem[]; folderNames: string[] }) => void): () => void {

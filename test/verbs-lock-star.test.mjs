@@ -158,3 +158,17 @@ describe("verbs · 锁 / 星 / 收起", () => {
     eq(r.statuses.pop()[0], t("gal.st.resolve.starred", { name: "猫" }));
   });
 });
+
+describe("verbs · 回收站不连坐（0.9.2，store 2.3.1；user「不应该牵连，不应该连坐」）", () => {
+  const aside = { box: "trash", identifier: "猫.ora", stem: "猫", kind: "painting", localKey: "k", cloudRef: "r", side: "both", at: 0 };
+  it("彻底删加了星的那一份：库拒了 → 说清先还原或撤星，不说「删除失败」；清空：留下的份数如实说", async () => {
+    const statuses2 = [];   // 这一条要一个「彻底删会被库拒、清空会留下一份」的假库，单独造
+    const v = createGalleryVerbs({ store: () => ({ identifiers: IDS, file: () => ({}), files: { purgeTrash: async () => { throw new StarredError(); }, emptyTrash: async () => ({ failed: [], kept: [{ name: "猫.ora", where: "cloud" }] }) } }),
+      host: { signedIn: () => true, online: () => true, activeIdentifier: () => null, confirm: async () => true, input: async () => null, chooseFolder: async () => null, status: (msg, e) => statuses2.push([msg, !!e]), busy: async (_l, fn) => fn() }, doc: {} });
+    await v.asidePurge(aside);
+    eq(statuses2.pop()[0], t("gal.st.starredNoPurge", { name: "猫" }));
+    await v.emptyAside("trash", "both");
+    const last = statuses2.pop();
+    eq(last[0], t("gal.st.emptyKeptStarred", { label: t("gal.scope.both"), n: 1 }), "清空：留下的份数如实说");
+  });
+});

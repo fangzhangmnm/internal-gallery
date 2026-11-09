@@ -17,7 +17,8 @@ export declare function areaResampleRgba(src: Uint8ClampedArray, sw: number, sh:
 export declare interface AsideEmptyResult {
     failed?: {
         where?: string;
-    }[];
+    }[]; /** store 2.3.1：清空回收站时留下没清的（加了星的不连坐）。 */
+    kept?: unknown[];
 }
 
 /** 搁置区的一行（只元数据，无字节）。 */
@@ -601,6 +602,14 @@ export declare type FoldRow = {
     key: string;
     count: number;
     open: boolean;
+}
+/** 0.9.2：图片 / 认不出来的文件——不能收起，和文件夹一样把细条隔开。 */
+| {
+    type: "image";
+    identifier: string;
+} | {
+    type: "other";
+    identifier: string;
 };
 
 export declare function foldTimeline(timeline: readonly TimelineEntry[], o: {
@@ -1431,6 +1440,16 @@ export declare const GALLERY_TEXT: {
         readonly zh: "「{name}」加了星：先撤星，才能送进回收站";
         readonly en: "“{name}” is starred: remove the star before moving it to trash";
         readonly ja: "「{name}」はスター付きです。先にスターを外してからゴミ箱に入れてください";
+    };
+    readonly "gal.st.starredNoPurge": {
+        readonly zh: "「{name}」加了星，没有彻底删：先还原它，或者撤了星再删";
+        readonly en: "“{name}” is starred and was not deleted for good: restore it, or remove the star first";
+        readonly ja: "「{name}」はスター付きのため完全削除していません。復元するか、スターを外してから削除してください";
+    };
+    readonly "gal.st.emptyKeptStarred": {
+        readonly zh: "已清空（{label}）；留下 {n} 份加了星的没清——可以还原，或者撤了星再清";
+        readonly en: "Emptied ({label}); {n} starred item(s) were kept — restore them, or remove the star first";
+        readonly ja: "空にしました（{label}）。スター付きの {n} 件は残してあります（復元するか、スターを外してください）";
     };
     readonly "gal.st.resolve.starred": {
         readonly zh: "「{name}」加了星，两边都没动：先撤星，才能选「云端覆盖本地」把这份送进回收站";
@@ -2816,8 +2835,8 @@ export declare interface MakeThumbOpts {
 
 export declare function memoryThumbStore(): ThumbStore;
 
-/** 作品和文件夹合成一列。 */
-export declare function mergeTimeline(items: readonly GItem[], folderNames: readonly string[]): TimelineEntry[];
+/** 作品、文件夹、图片、认不出来的文件合成一列。 */
+export declare function mergeTimeline(items: readonly GItem[], folderNames: readonly string[], images?: readonly TimelineFile[], others?: readonly TimelineFile[]): TimelineEntry[];
 
 /** File 包装的 MIME（decodeImageFile 实际按字节嗅探，给对只是礼貌）。 */
 export declare function mimeForImageName(name: string): string;
@@ -2989,6 +3008,9 @@ export declare function snapshotFolderOnce(watch: WatchFolderFn, folder: string,
 /** legacy / 唯一库的 id（原 WeebPaint doc-home.ts；宿主 doc-home 改从本包 import）。 */
 export declare const SOLE_GALLERY_ID = "default";
 
+/** 不是作品的文件拿什么排：去掉最后一个扩展名的文件名（「20240101 草图.png」→「20240101 草图」；没有扩展名 / 点开头的原样）。 */
+export declare const sortNameOfFile: (label: string) => string;
+
 /** 溢出逐件下载时的落地名：路径分隔符压成 `_`，保住来源夹（不同夹同名不会互相盖）。 */
 export declare const spillName: (path: string) => string;
 
@@ -3138,14 +3160,26 @@ export declare interface TileInfo {
 /** 时间线上两个名字谁在上：负 = a 在上。 */
 export declare function timelineCompare(a: string, b: string): number;
 
-/** 时间线上的一格：文件夹（name = 相对当前夹的夹名）或作品。 */
+/** 时间线上的一格：文件夹（name = 相对当前夹的夹名）、作品、图片、认不出来的文件。 */
 export declare type TimelineEntry = {
     type: "folder";
     name: string;
 } | {
     type: "doc";
     item: GItem;
+} | {
+    type: "image";
+    file: TimelineFile;
+} | {
+    type: "other";
+    file: TimelineFile;
 };
+
+/** 时间线上不是作品的文件（图片 / 认不出来的）：只要身份和给人看的名字（最后一段）。 */
+export declare interface TimelineFile {
+    identifier: string;
+    label: string;
+}
 
 /** 复制/展示用的整段文本：环境头 + 每条一行「MM-DD HH:MM:SS.mmm L msg」（旧在上、新在下）。 */
 declare function toText(): string;

@@ -1,7 +1,7 @@
 // 0.8.12：时间线的顺序（明文规则，core/model/timeline-order.ts）。created 2026-11-08 by Claude Fable 5.1
 // user 2026-11-08：「文件夹肯定是要进排序的，不然文件夹都挡在上面，很烦很烦」「不带日期的常驻最上面，这个是我当时说带日期的文件夹堆在中间是同一回事」。
 import { describe, it, eq, assert } from "./runner.mjs";
-import { leadingDate, timelineCompare, mergeTimeline } from "../src/core/model/timeline-order.ts";
+import { leadingDate, timelineCompare, mergeTimeline, sortNameOfFile } from "../src/core/model/timeline-order.ts";
 
 const doc = (stem, identifier = `${stem}.ora`) => ({ identifier, stem, kind: "painting", syncState: "synced" });
 const order = (names) => [...names].sort(timelineCompare).join(" | ");
@@ -64,5 +64,28 @@ describe("timeline-order · 文件夹进排序", () => {
     eq(tl.length, 7);
     eq(tl.filter((e) => e.type === "doc").map((e) => e.item.identifier).sort().join("|"), docs.map((d) => d.identifier).sort().join("|"));
     eq(tl.filter((e) => e.type === "folder").map((e) => e.name).sort().join("|"), [...folders].sort().join("|"));
+  });
+});
+
+describe("timeline-order · 图片和认不出来的文件也在时间线里（0.9.2）", () => {
+  const file = (label) => ({ identifier: label, label });
+  const show = (tl) => tl.map((e) => e.type === "folder" ? `[${e.name}]` : e.type === "doc" ? e.item.identifier : `${e.type}:${e.file.label}`).join(" | ");
+  it("拿去掉最后一个扩展名的文件名排；没有扩展名 / 点开头的原样", () => {
+    eq(sortNameOfFile("20240101 草图.png"), "20240101 草图"); eq(sortNameOfFile("a.tar.gz"), "a.tar"); eq(sortNameOfFile("README"), "README"); eq(sortNameOfFile(".hidden"), ".hidden");
+  });
+  it("日期比文件类型优先：四种东西按日期混排", () => {
+    const tl = mergeTimeline([doc("20240201 画"), doc("20231201 画")], ["20240301 夹"], [file("20240115 参考.jpg")], [file("20240401 说明.txt")]);
+    eq(show(tl), "other:20240401 说明.txt | [20240301 夹] | 20240201 画.ora | image:20240115 参考.jpg | 20231201 画.ora");
+  });
+  it("名字完全一样：文件夹 → 作品 → 图片 → 认不出来的", () => {
+    const tl = mergeTimeline([doc("20240101 猫")], ["20240101 猫"], [file("20240101 猫.png")], [file("20240101 猫.md")]);
+    eq(show(tl), "[20240101 猫] | 20240101 猫.ora | image:20240101 猫.png | other:20240101 猫.md");
+  });
+  it("不带日期的图片 / 杂物和别的不带日期的一起常驻最上面", () => {
+    const tl = mergeTimeline([doc("20240101 画")], [], [file("IMG_0001.png")], [file("CLAUDE.md")]);
+    eq(tl[tl.length - 1].type, "doc"); eq(tl.length, 3);
+  });
+  it("不给图片 / 杂物（老调用方）= 0.8.12 的结果", () => {
+    eq(show(mergeTimeline([doc("b"), doc("a")], ["夹"])), "[夹] | b.ora | a.ora");
   });
 });

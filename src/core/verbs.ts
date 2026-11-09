@@ -296,7 +296,7 @@ export function createGalleryVerbs(d: VerbDeps) {
     if (!(await d.host.confirm(t("gal.dlg.purgeTitle", { name: item.stem }), t("gal.dlg.purgeMsg")))) return;
     await d.host.busy(t("gal.busy.purge", { name: item.stem }), async () => {
       try { await d.store().files.purgeTrash({ trashKey: item.localKey, cloudRef: item.cloudRef }); d.host.status(t("gal.st.purged", { name: item.stem })); }
-      catch (e: unknown) { d.host.status(t("gal.st.purgeFail", { e: errMsg(e) }), true); }
+      catch (e: unknown) { d.host.status(isStarredError(e) ? t("gal.st.starredNoPurge", { name: item.stem }) : t("gal.st.purgeFail", { e: errMsg(e) }), true); }   // 0.9.2：加了星的（别的设备删进来的）不许彻底删
     });
   }
   async function emptyAside(kind: AsideKind, scope: AsideScope = "both"): Promise<void> {
@@ -310,6 +310,7 @@ export function createGalleryVerbs(d: VerbDeps) {
         const cloudFails = (res.failed || []).filter((f) => f.where !== "local").length;
         if (scope !== "local" && cloudFails) d.host.status(t(tx.emptyCloudFail, { n: cloudFails }), true);
         else if ((res.failed || []).length) d.host.status(t(tx.emptyPartial), true);
+        else if ((res.kept || []).length) d.host.status(t("gal.st.emptyKeptStarred", { label, n: (res.kept || []).length }), true);   // 0.9.2（store 2.3.1）：加了星的不连坐，留着并如实说
         else d.host.status(t(tx.emptyDone, { label }));
       } catch (e: unknown) { d.host.status(`${t(tx.emptyPartial)}: ${errMsg(e)}`, true); }
     });

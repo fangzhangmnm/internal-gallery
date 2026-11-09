@@ -89,6 +89,12 @@ describe("fold-groups · 收起", () => {
     const seen = rows.filter((r) => r.type === "doc").map((r) => r.item.identifier).sort();
     eq(seen.join("|"), items.map((i) => i.identifier).sort().join("|"));
   });
+  it("0.9.2：图片 / 认不出来的文件也是一格，和文件夹一样把细条隔开；它们不能收起", () => {
+    const F = { folded: true };
+    const tl = mergeTimeline([doc("20240103 c", F), doc("20240101 a", F)], [], [{ identifier: "20240102 图.png", label: "20240102 图.png" }], [{ identifier: "笔记.md", label: "笔记.md" }]);
+    const rows = foldTimeline(tl, closed);
+    eq(rows.map((r) => r.type === "strip" ? `<${r.count}>` : r.type === "doc" ? r.item.stem : `${r.type}:${r.identifier}`).join(" | "), "other:笔记.md | <1> | image:20240102 图.png | <1>");
+  });
   it("不同种文档不互相认版本（猫.txt 的版本不挂到 猫.ora 底下）", () => {
     const tl = mergeTimeline([doc("猫"), doc("猫.backup-20261108", {}, ".txt")], []);
     const rows = foldTimeline(tl, closed);
