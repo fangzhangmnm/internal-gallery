@@ -9,6 +9,8 @@ import { ASIDE, type AsideItem, type AsideKind, type AsideScope } from "../core/
 import { pathJoin } from "../core/model/gallery-path.ts";
 import { imageThumbToken, imageTwinIdentifier, mimeForImageName } from "../core/model/cloud-image-model.ts";
 import { createEncryptionState, encVersionOf, encryptionMenu, admitThumbBlob, dropPlainByproducts, type EncFacts } from "../core/model/encryption-state.ts";
+import { createSealedCover, type CoverShown } from "../core/model/sealed-cover.ts";
+import type { TimelineEntry } from "../core/model/timeline-order.ts";
 import { createFrameGate } from "../core/guards/frame-gate.ts";
 import { createFirstFrameWatchdog } from "../core/guards/first-frame-watchdog.ts";
 import { note as diagNote } from "../core/guards/diag-log.ts";
@@ -217,21 +219,25 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
     setup(props: { encName: string | null; fetchable: boolean; isCloud: boolean; cloudNewer: boolean; thumbToken: string; fallback: string; fallbackHtml: string; alt: string; sealed: boolean }, ctx: { emit: (event: string, ...args: unknown[]) => void }) {
       const url = ref<string | null>(null), showCloud = ref(false), locked = ref(false), root = ref<HTMLElement | null>(null);
       let cloudEncBlob: Blob | null = null, objUrl: string | null = null, obs: IntersectionObserver | null = null;
-      let shownPlain = false;   // 0.8.11：当前显示的是不是一张没经过解密的明文图（已知加密时要撤）
+      let shown: CoverShown = "none";   // 当前显示的图是哪来的：plain = 没经过解密的明文图（已知加密时要撤，0.8.11）；decrypted = 解密得来的（锁上时要撤，0.8.12）
       const blurb = ref("");
       // 0.2.0：缩略图 PNG 自带的 Description 文本块 = 腰封 / caption → 悬停 tooltip（user 2026-09-10「thumbnail.png 的标准 tEXt 文本块…gallery 库的公共行为」）
       const readBlurb = (blob: Blob) => { void blob.arrayBuffer().then((ab) => { const u8 = new Uint8Array(ab); blurb.value = isPng(u8) ? (readPngText(u8)[PNG_BLURB_KEYWORD] ?? "") : ""; }).catch(() => { blurb.value = ""; }); };
-      const setBlob = (blob: Blob, plain: boolean) => { if (objUrl) URL.revokeObjectURL(objUrl); objUrl = URL.createObjectURL(blob); url.value = objUrl; shownPlain = plain; readBlurb(blob); };
-      const clearShown = () => { if (objUrl) URL.revokeObjectURL(objUrl); objUrl = null; url.value = null; blurb.value = ""; shownPlain = false; };
-      const tryDecrypt = async () => {
-        if (shownPlain) clearShown();   // 0.8.11：转进加密那条路之前，明文时代显示着的那张先撤（解不开时模板的 v-if="url" 会盖过锁）
-        if (!enc) { locked.value = true; return; }
-        let png: Blob | null = null;
-        if (props.encName) png = await enc.localPeekThumb(props.encName);
-        else if (cloudEncBlob) png = await enc.decryptCloudPeekThumb(props.alt, cloudEncBlob);
-        if (png && png.size > 0) { locked.value = false; setBlob(png, false); }
-        else if (enc.isUnlocked()) locked.value = false;   // 0.2.1：解锁了但这本没封面 → 占位图标，不是锁（锁只表示「解不开」）
-        else locked.value = true;
+      const setBlob = (blob: Blob, from: "plain" | "decrypted") => { if (objUrl) URL.revokeObjectURL(objUrl); objUrl = URL.createObjectURL(blob); url.value = objUrl; shown = from; readBlurb(blob); };
+      const clearShown = () => { if (objUrl) URL.revokeObjectURL(objUrl); objUrl = null; url.value = null; blurb.value = ""; shown = "none"; };
+      // 0.8.12（周账 F-228）：解密、显示、锁上时撤掉，这一段状态机住 core/model/sealed-cover.ts（有测试）；这里只借手脚给它。
+      const cover = enc ? createSealedCover({
+        isUnlocked: () => enc.isUnlocked(),
+        hasSource: () => !!props.encName || cloudEncBlob != null,
+        decrypt: async () => props.encName ? enc.localPeekThumb(props.encName) : cloudEncBlob ? enc.decryptCloudPeekThumb(props.alt, cloudEncBlob) : null,
+        shown: () => shown, locked: () => locked.value,
+        show: (png) => setBlob(png, "decrypted"), clear: clearShown, setLocked: (v) => { locked.value = v; },
+        onError: (err) => d.reportError(new Error("[gallery] decrypt cover: " + String(err)), "log"),
+      }) : null;
+      const tryDecrypt = (): Promise<void> => {
+        if (cover) return cover.tryDecrypt();
+        if (shown === "plain") clearShown();   // 没有加密端口：解不了，只有锁
+        locked.value = true; return Promise.resolve();
       };
       let fetchSeq = 0;
       const fetchThumb = () => {
@@ -243,8 +249,8 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
             if (!blob) return;   // 0.2.2：确定没缩略图 → 占位图标（书），不是云
             const verdict = admitThumbBlob(blob, { sealed: props.sealed, isEncryptedPeekBlob: enc ? (b) => enc.isEncryptedPeekBlob(b) : undefined });
             if (verdict === "enc-peek") { cloudEncBlob = blob; ctx.emit("sealed"); return tryDecrypt(); }
-            if (verdict === "refuse") { if (shownPlain) clearShown(); return; }   // 0.8.11：已知加密 → 明文图不显示、不退回
-            setBlob(blob, true);
+            if (verdict === "refuse") { if (shown === "plain") clearShown(); return; }   // 0.8.11：已知加密 → 明文图不显示、不退回
+            setBlob(blob, "plain");
           })
           .catch((err: unknown) => d.reportError(new Error("[gallery] thumb: " + String(err)), "log"));
       };
@@ -256,9 +262,9 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
           void nextTick(() => { if (obs && root.value) obs.observe(root.value); });
         }
       });
-      watch(() => _lockState.unlocked, () => { if (locked.value || props.encName) void tryDecrypt(); });
+      watch(() => _lockState.unlocked, () => { cover?.onLockChange(_lockState.unlocked); });   // 锁上 = 解密得来的封面当场撤（同步）；解锁 = 重新试解
       // 0.8.11：图库刚知道这份是加密的 → 显示着的明文图当场撤；本地字节变成容器（encName 来了）→ 走本地解密那条；容器变回明文（encName 走了）→ 按普通图重拉
-      watch(() => props.sealed, () => { if (props.sealed && shownPlain) clearShown(); });
+      watch(() => props.sealed, () => { if (props.sealed && shown === "plain") clearShown(); });
       watch(() => props.encName, () => {
         if (props.encName) { void tryDecrypt(); return; }
         cloudEncBlob = null; locked.value = false;
@@ -314,7 +320,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const markerOf = (item: GItem): "unread" | null => { try { return d.tile?.marker?.(item) ?? null; } catch { return null; } };
       const folder = ref<string>(safeFolder());
       const loading = ref(false);
-      const data = reactive<{ files: GItem[]; images: CloudImageItem[]; others: GallerySnapshot["others"]; folderNames: string[] }>({ files: [], images: [], others: [], folderNames: [] });
+      const data = reactive<{ files: GItem[]; images: CloudImageItem[]; others: GallerySnapshot["others"]; folderNames: string[]; timeline: TimelineEntry[] }>({ files: [], images: [], others: [], folderNames: [], timeline: [] });
       const aside = ref<AsideItem[]>([]);   // 当前开着的那个搁置区的列表（回收站 / 备份箱）
       const openMenu = ref<string | null>(null);
       function safeFolder() { try { return d.folderMemory?.get() || ""; } catch { return ""; } }
@@ -322,7 +328,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       let _unsub: (() => void) | null = null, _framedFolder: string | null = null, _awaitingFirst = false, _subscribedAt = 0;
       function applyFrame(snap: GallerySnapshot) {
         if (view.value !== "files" || snap.folder !== folder.value) return;
-        data.files = snap.items; data.images = snap.images; data.others = snap.others; data.folderNames = snap.folderNames;
+        data.files = snap.items; data.images = snap.images; data.others = snap.others; data.folderNames = snap.folderNames; data.timeline = snap.timeline;
         _framedFolder = snap.folder; loading.value = false;
         wd.frame(snap.folder);
         if (stalled.value) stalled.value = null;
@@ -347,7 +353,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       function subscribe() {
         _unsub?.(); _unsub = null;
         if (view.value !== "files") return;
-        if (!d.store()) { data.files = []; data.images = []; data.others = []; data.folderNames = []; loading.value = false; wd.cancel(); stalled.value = null; return; }   // 无库：不订阅、空网格
+        if (!d.store()) { data.files = []; data.images = []; data.others = []; data.folderNames = []; data.timeline = []; loading.value = false; wd.cancel(); stalled.value = null; return; }   // 无库：不订阅、空网格
         loading.value = _framedFolder !== folder.value;
         stalled.value = null;
         _awaitingFirst = true; _subscribedAt = performance.now();
@@ -430,13 +436,24 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         const tile = tileFor(it, { signedIn: d.host.signedIn(), activeIdentifier: d.host.activeIdentifier(), encrypted });
         const info = fileInfo(it), facts = encrypted ? null : factsOf(it.identifier);   // 加密件的事实是明文时代留下的 → 不给宿主画
         const encMenu = encryptionMenu({ hasEncryption: !!enc, hasLocal: tile.hasLocal, encrypted, localEncrypted: encLocal });
-        return { item: it, t: tile, encV, encLocal, encMenu, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.identifier, info, facts), thumb: hasThumb(it.kind), info, facts, act: actionOf(it.identifier, info, facts) ?? attentionAction(tile) };
+        return { key: it.identifier, ft: null, item: it, t: tile, encV, encLocal, encMenu, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.identifier, info, facts), thumb: hasThumb(it.kind), info, facts, act: actionOf(it.identifier, info, facts) ?? attentionAction(tile) };
       }));
+      // 0.8.12：作品和文件夹合成一列（顺序 = 数据面给的 timeline，规则只在 core/model/timeline-order.ts）；文件夹不再单独钉在最上面。
+      //   一行要么是文件夹（ft 有值），要么是作品（ft = null，其余字段同上）；模板按 ft 分叉。
+      const timelineRows = computed(() => {
+        const byId = new Map(fileTiles.value.map((r) => [r.t.identifier, r] as const));
+        const rows: ({ key: string; ft: { name: string; path: string } } | (typeof fileTiles.value)[number])[] = [];
+        for (const e of data.timeline) {
+          if (e.type === "folder") { const path = pathJoin(folder.value, e.name); rows.push({ key: "F:" + path, ft: { name: e.name, path } }); }
+          else { const r = byId.get(e.item.identifier); if (r) rows.push(r); }
+        }
+        return rows;
+      });
       // 0.8.8：顶部横幅「有 N 份要处理 → 看列表」+ 只看要处理的（user「你一开始说批量处理我以为的是给你一个列表你当时就立刻点」——列表 = 这几张卡，每张一粒「处理…」，点了当场弹面）
       const attentionWanted = ref(false);   // 宿主 / 用户要的；帧还没到时也能先记下（setAttentionOnly(true) 紧跟 open()）
       const attentionCount = computed(() => fileTiles.value.reduce((n, r) => n + (r.t.attention ? 1 : 0), 0));
       const attentionOnly = computed(() => attentionWanted.value && attentionCount.value > 0);   // 没有要处理的 = 当没开（绝不留一个空格子）
-      const shownFileTiles = computed(() => attentionOnly.value ? fileTiles.value.filter((r) => r.t.attention) : fileTiles.value);
+      const shownTimeline = computed(() => attentionOnly.value ? fileTiles.value.filter((r) => r.t.attention) : timelineRows.value);   // 只看要处理的 = 只有那几份作品，文件夹不画
       const attentionText = computed(() => t(attentionOnly.value ? "gal.attention.showing" : "gal.attention.banner", { n: attentionCount.value }));
       let _prevAttention = 0;
       watch(() => attentionCount.value, () => { const n = attentionCount.value; if (n === 0 && _prevAttention > 0) attentionWanted.value = false; _prevAttention = n; });   // 都处理完了 → 回全部
@@ -556,7 +573,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       return {
         tileTall, tileStyle, layout, setLayout: (l: "cards" | "list") => { layout.value = l; },
         view, folder, loading, stalled, retry, openDiag, reloadApp, openMenu, isEmpty, emptyText, L, phHtml,
-        folderTiles, fileTiles, shownFileTiles, imageTiles, otherTiles, asideTiles, crumbs, badgeIcon2,
+        folderTiles, fileTiles, shownTimeline, imageTiles, otherTiles, asideTiles, crumbs, badgeIcon2,
         attentionOnly, attentionCount, attentionText, setAttentionOnly, toggleAttentionOnly: () => setAttentionOnly(!attentionWanted.value),   // 0.8.8
         badgeIcon, fmtMeta, humanTime, fullTime, ICON, toggleMenu, menuMount: el, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
         openTile, tileAction, openImageTile, deleteImage, rename, move, copy, resolve, unload, keepOffline, del, folderDelete, asideRestore, asidePurge, emptyAside,

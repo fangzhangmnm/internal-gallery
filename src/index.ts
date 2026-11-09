@@ -7,6 +7,7 @@ export * from "./core/naming.ts";
 export * from "./core/model/gallery-model.ts";
 export * from "./core/model/gallery-path.ts";
 export * from "./core/model/natural-order.ts";
+export * from "./core/model/timeline-order.ts";   // 0.8.12：时间线的顺序（作品和文件夹同一套明文规则）
 export * from "./core/model/gallery-view-model.ts";
 export type { AsideKind, AsideScope, AsideItem, AsideEmptyResult } from "./core/model/aside.ts";   // 0.5.0：搁置区（回收站 / 备份箱）只出类型；差异表 ASIDE 不出门
 export * from "./core/model/cloud-image-model.ts";

@@ -259,359 +259,362 @@ export function galleryRender(Vue: any): any {
           : _createCommentVNode("v-if", true),
         (_ctx.view==='files' && !_ctx.loading)
           ? (_openBlock(), _createElementBlock(_Fragment, { key: 1 }, [
-              (_openBlock(true), _createElementBlock(_Fragment, null, _renderList((_ctx.attentionOnly ? [] : _ctx.folderTiles), (ft) => {
-                return (_openBlock(), _createElementBlock("div", {
-                  key: 'F:'+ft.path,
-                  class: "gallery-tile folder",
-                  onClick: $event => (_ctx.enterFolder(ft.path))
+              (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(_ctx.shownTimeline, (row) => {
+                return (_openBlock(), _createElementBlock(_Fragment, {
+                  key: row.key
                 }, [
-                  _createElementVNode("div", {
-                    class: "gallery-tile-thumb",
-                    innerHTML: _ctx.ICON.folder
-                  }, null, 8 /* PROPS */, _hoisted_10),
-                  _createElementVNode("div", _hoisted_11, [
-                    _createElementVNode("div", {
-                      class: "gallery-tile-name",
-                      title: ft.path
-                    }, _toDisplayString(ft.name), 9 /* TEXT, PROPS */, _hoisted_12),
-                    _createElementVNode("div", _hoisted_13, _toDisplayString(_ctx.L.folder), 1 /* TEXT */)
-                  ]),
-                  _createElementVNode("button", {
-                    type: "button",
-                    class: "gallery-tile-menu-btn",
-                    "aria-label": _ctx.L.more,
-                    onClick: _withModifiers($event => (_ctx.toggleMenu('F:'+ft.path, $event)), ["stop"])
-                  }, [...(_cache[10] || (_cache[10] = [
-                    _createElementVNode("svg", {
-                      viewBox: "0 0 24 24",
-                      "aria-hidden": "true"
-                    }, [
-                      _createElementVNode("use", { href: "#more" })
-                    ], -1 /* CACHED */)
-                  ]))], 8 /* PROPS */, _hoisted_14),
-                  (_openBlock(), _createBlock(_Teleport, { to: _ctx.menuMount }, [
-                    _createElementVNode("div", {
-                      class: "gallery-tile-menu-popup hidden",
-                      "data-menu": 'F:'+ft.path,
-                      onClick: _cache[5] || (_cache[5] = _withModifiers(() => {}, ["stop"]))
-                    }, [
-                      _createElementVNode("button", {
-                        type: "button",
-                        class: "danger",
-                        onClick: $event => (_ctx.folderDelete(ft))
-                      }, [
-                        _cache[11] || (_cache[11] = _createElementVNode("svg", {
-                          viewBox: "0 0 24 24",
-                          "aria-hidden": "true"
-                        }, [
-                          _createElementVNode("use", { href: "#trash-can" })
-                        ], -1 /* CACHED */)),
-                        _createElementVNode("span", null, _toDisplayString(_ctx.L.delEmptyFolder), 1 /* TEXT */)
-                      ], 8 /* PROPS */, _hoisted_16)
-                    ], 8 /* PROPS */, _hoisted_15)
-                  ], 8 /* PROPS */, ["to"]))
-                ], 8 /* PROPS */, _hoisted_9))
-              }), 128 /* KEYED_FRAGMENT */)),
-              (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(_ctx.shownFileTiles, (row) => {
-                return (_openBlock(), _createElementBlock("div", {
-                  key: row.t.identifier,
-                  class: _normalizeClass(["gallery-tile", { active: row.t.isActive, encrypted: row.t.encrypted, attention: row.t.attention }]),
-                  onClick: $event => (_ctx.openTile(row.item))
-                }, [
-                  _createVNode(_component_ThumbCell, {
-                    "enc-name": row.encLocal && row.thumb ? row.t.identifier : null,
-                    fetchable: !row.encLocal && (row.t.hasCloud || row.t.hasLocal) && row.thumb,
-                    sealed: row.t.encrypted,
-                    "is-cloud": !row.t.hasLocal && row.t.hasCloud,
-                    "cloud-newer": row.t.cloudNewer,
-                    "thumb-token": String(row.t.time || row.t.size || 0),
-                    fallback: row.t.stem.slice(0,1) || '?',
-                    "fallback-html": _ctx.phHtml(row.t.identifier, row.info),
-                    alt: row.t.identifier,
-                    onUnlock: _ctx.onUnlock,
-                    onSealed: $event => (_ctx.notePeekSealed(row.item))
-                  }, null, 8 /* PROPS */, ["enc-name", "fetchable", "sealed", "is-cloud", "cloud-newer", "thumb-token", "fallback", "fallback-html", "alt", "onUnlock", "onSealed"]),
-                  (row.ov)
-                    ? (_openBlock(), _createElementBlock("span", {
+                  (row.ft)
+                    ? (_openBlock(), _createElementBlock("div", {
                         key: 0,
-                        class: "gallery-tile-overlay",
-                        innerHTML: row.ov
-                      }, null, 8 /* PROPS */, _hoisted_18))
-                    : _createCommentVNode("v-if", true),
-                  (row.act)
-                    ? (_openBlock(), _createElementBlock("span", _hoisted_19, [
+                        class: "gallery-tile folder",
+                        onClick: $event => (_ctx.enterFolder(row.ft.path))
+                      }, [
+                        _createElementVNode("div", {
+                          class: "gallery-tile-thumb",
+                          innerHTML: _ctx.ICON.folder
+                        }, null, 8 /* PROPS */, _hoisted_10),
+                        _createElementVNode("div", _hoisted_11, [
+                          _createElementVNode("div", {
+                            class: "gallery-tile-name",
+                            title: row.ft.path
+                          }, _toDisplayString(row.ft.name), 9 /* TEXT, PROPS */, _hoisted_12),
+                          _createElementVNode("div", _hoisted_13, _toDisplayString(_ctx.L.folder), 1 /* TEXT */)
+                        ]),
                         _createElementVNode("button", {
                           type: "button",
-                          class: _normalizeClass(["gallery-tile-action", [row.act.state || 'ready', row.act.verb ? 'verb-' + row.act.verb : '']]),
-                          title: row.act.title,
-                          "aria-label": row.act.title,
-                          onClick: _withModifiers($event => (_ctx.tileAction(row)), ["stop"]),
-                          onPointerdown: _cache[6] || (_cache[6] = _withModifiers(() => {}, ["stop"]))
-                        }, [
-                          _createElementVNode("span", {
-                            class: "gallery-tile-action-ico",
-                            innerHTML: _ctx.badgeIcon2(row.act.icon)
-                          }, null, 8 /* PROPS */, _hoisted_21),
-                          (row.act.verb)
-                            ? (_openBlock(), _createElementBlock("span", _hoisted_22, _toDisplayString(row.act.title), 1 /* TEXT */))
-                            : _createCommentVNode("v-if", true)
-                        ], 42 /* CLASS, PROPS, NEED_HYDRATION */, _hoisted_20)
-                      ]))
-                    : _createCommentVNode("v-if", true),
-                  (row.t.encrypted)
-                    ? (_openBlock(), _createElementBlock("span", {
-                        key: 2,
-                        class: "gallery-tile-lockmark",
-                        title: _ctx.L.encrypted,
-                        innerHTML: _ctx.ICON.lock
-                      }, null, 8 /* PROPS */, _hoisted_23))
-                    : _createCommentVNode("v-if", true),
-                  _createElementVNode("div", _hoisted_24, [
-                    (row.t.isActive)
-                      ? (_openBlock(), _createElementBlock("span", _hoisted_25, _toDisplayString(_ctx.L.activeTag), 1 /* TEXT */))
-                      : _createCommentVNode("v-if", true),
-                    _createElementVNode("div", {
-                      class: "gallery-tile-name",
-                      title: row.t.identifier
-                    }, [
-                      (row.marker==='unread')
-                        ? (_openBlock(), _createElementBlock("span", {
-                            key: 0,
-                            class: "gallery-marker unread",
-                            title: _ctx.L.unread
-                          }, null, 8 /* PROPS */, _hoisted_27))
-                        : _createCommentVNode("v-if", true),
-                      _createTextVNode(_toDisplayString(row.t.stem), 1 /* TEXT */)
-                    ], 8 /* PROPS */, _hoisted_26),
-                    (row.sub)
-                      ? (_openBlock(), _createElementBlock("div", {
-                          key: 1,
-                          class: "gallery-tile-sub",
-                          title: row.sub
-                        }, _toDisplayString(row.sub), 9 /* TEXT, PROPS */, _hoisted_28))
-                      : _createCommentVNode("v-if", true),
-                    _createElementVNode("div", _hoisted_29, [
-                      (row.t.encrypted)
-                        ? (_openBlock(), _createElementBlock("span", {
-                            key: 0,
-                            class: "gallery-tile-state-icon enc",
-                            title: _ctx.L.encrypted,
-                            innerHTML: _ctx.ICON.lock
-                          }, null, 8 /* PROPS */, _hoisted_30))
-                        : _createCommentVNode("v-if", true),
-                      _createElementVNode("span", {
-                        class: _normalizeClass('gallery-tile-state-icon b-' + row.t.badge),
-                        title: row.t.badgeTitle,
-                        innerHTML: _ctx.badgeIcon(row.t.badge)
-                      }, null, 10 /* CLASS, PROPS */, _hoisted_31),
-                      _createElementVNode("span", null, _toDisplayString(_ctx.fmtMeta(row.t)), 1 /* TEXT */)
-                    ])
-                  ]),
-                  _createElementVNode("button", {
-                    type: "button",
-                    class: "gallery-tile-menu-btn",
-                    "aria-label": _ctx.L.more,
-                    onClick: _withModifiers($event => (_ctx.toggleMenu(row.t.identifier, $event)), ["stop"])
-                  }, [...(_cache[12] || (_cache[12] = [
-                    _createElementVNode("svg", {
-                      viewBox: "0 0 24 24",
-                      "aria-hidden": "true"
-                    }, [
-                      _createElementVNode("use", { href: "#more" })
-                    ], -1 /* CACHED */)
-                  ]))], 8 /* PROPS */, _hoisted_32),
-                  (_openBlock(), _createBlock(_Teleport, { to: _ctx.menuMount }, [
-                    _createElementVNode("div", {
-                      class: "gallery-tile-menu-popup hidden",
-                      "data-menu": row.t.identifier,
-                      onClick: _cache[7] || (_cache[7] = _withModifiers(() => {}, ["stop"]))
-                    }, [
-                      (row.t.ghost)
-                        ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [
-                            _createElementVNode("div", _hoisted_34, _toDisplayString(_ctx.L.divergedNote), 1 /* TEXT */),
+                          class: "gallery-tile-menu-btn",
+                          "aria-label": _ctx.L.more,
+                          onClick: _withModifiers($event => (_ctx.toggleMenu(row.key, $event)), ["stop"])
+                        }, [...(_cache[10] || (_cache[10] = [
+                          _createElementVNode("svg", {
+                            viewBox: "0 0 24 24",
+                            "aria-hidden": "true"
+                          }, [
+                            _createElementVNode("use", { href: "#more" })
+                          ], -1 /* CACHED */)
+                        ]))], 8 /* PROPS */, _hoisted_14),
+                        (_openBlock(), _createBlock(_Teleport, { to: _ctx.menuMount }, [
+                          _createElementVNode("div", {
+                            class: "gallery-tile-menu-popup hidden",
+                            "data-menu": row.key,
+                            onClick: _cache[5] || (_cache[5] = _withModifiers(() => {}, ["stop"]))
+                          }, [
                             _createElementVNode("button", {
                               type: "button",
-                              onClick: $event => (_ctx.resolve(row.item))
+                              class: "danger",
+                              onClick: $event => (_ctx.folderDelete(row.ft))
                             }, [
-                              _cache[13] || (_cache[13] = _createElementVNode("svg", {
+                              _cache[11] || (_cache[11] = _createElementVNode("svg", {
                                 viewBox: "0 0 24 24",
                                 "aria-hidden": "true"
                               }, [
-                                _createElementVNode("use", { href: "#cloud-pending" })
+                                _createElementVNode("use", { href: "#trash-can" })
                               ], -1 /* CACHED */)),
-                              _createElementVNode("span", null, _toDisplayString(_ctx.L.resolve), 1 /* TEXT */)
-                            ], 8 /* PROPS */, _hoisted_35),
-                            _createElementVNode("button", {
-                              type: "button",
-                              onClick: $event => (_ctx.rename(row.item))
-                            }, [
-                              _cache[14] || (_cache[14] = _createElementVNode("svg", {
-                                viewBox: "0 0 24 24",
-                                "aria-hidden": "true"
-                              }, [
-                                _createElementVNode("use", { href: "#rename" })
-                              ], -1 /* CACHED */)),
-                              _createElementVNode("span", null, _toDisplayString(_ctx.L.renameKeep), 1 /* TEXT */)
-                            ], 8 /* PROPS */, _hoisted_36)
-                          ], 64 /* STABLE_FRAGMENT */))
-                        : (row.t.pendingGone)
-                          ? (_openBlock(), _createElementBlock("button", {
-                              key: 1,
-                              type: "button",
-                              onClick: $event => (_ctx.resolve(row.item))
-                            }, [
-                              _cache[15] || (_cache[15] = _createElementVNode("svg", {
-                                viewBox: "0 0 24 24",
-                                "aria-hidden": "true"
-                              }, [
-                                _createElementVNode("use", { href: "#cloud-pending" })
-                              ], -1 /* CACHED */)),
-                              _createElementVNode("span", null, _toDisplayString(_ctx.L.resolve), 1 /* TEXT */)
-                            ], 8 /* PROPS */, _hoisted_37))
-                          : (_openBlock(), _createElementBlock(_Fragment, { key: 2 }, [
+                              _createElementVNode("span", null, _toDisplayString(_ctx.L.delEmptyFolder), 1 /* TEXT */)
+                            ], 8 /* PROPS */, _hoisted_16)
+                          ], 8 /* PROPS */, _hoisted_15)
+                        ], 8 /* PROPS */, ["to"]))
+                      ], 8 /* PROPS */, _hoisted_9))
+                    : (_openBlock(), _createElementBlock("div", {
+                        key: 1,
+                        class: _normalizeClass(["gallery-tile", { active: row.t.isActive, encrypted: row.t.encrypted, attention: row.t.attention }]),
+                        onClick: $event => (_ctx.openTile(row.item))
+                      }, [
+                        _createVNode(_component_ThumbCell, {
+                          "enc-name": row.encLocal && row.thumb ? row.t.identifier : null,
+                          fetchable: !row.encLocal && (row.t.hasCloud || row.t.hasLocal) && row.thumb,
+                          sealed: row.t.encrypted,
+                          "is-cloud": !row.t.hasLocal && row.t.hasCloud,
+                          "cloud-newer": row.t.cloudNewer,
+                          "thumb-token": String(row.t.time || row.t.size || 0),
+                          fallback: row.t.stem.slice(0,1) || '?',
+                          "fallback-html": _ctx.phHtml(row.t.identifier, row.info),
+                          alt: row.t.identifier,
+                          onUnlock: _ctx.onUnlock,
+                          onSealed: $event => (_ctx.notePeekSealed(row.item))
+                        }, null, 8 /* PROPS */, ["enc-name", "fetchable", "sealed", "is-cloud", "cloud-newer", "thumb-token", "fallback", "fallback-html", "alt", "onUnlock", "onSealed"]),
+                        (row.ov)
+                          ? (_openBlock(), _createElementBlock("span", {
+                              key: 0,
+                              class: "gallery-tile-overlay",
+                              innerHTML: row.ov
+                            }, null, 8 /* PROPS */, _hoisted_18))
+                          : _createCommentVNode("v-if", true),
+                        (row.act)
+                          ? (_openBlock(), _createElementBlock("span", _hoisted_19, [
                               _createElementVNode("button", {
                                 type: "button",
-                                onClick: $event => (_ctx.rename(row.item))
+                                class: _normalizeClass(["gallery-tile-action", [row.act.state || 'ready', row.act.verb ? 'verb-' + row.act.verb : '']]),
+                                title: row.act.title,
+                                "aria-label": row.act.title,
+                                onClick: _withModifiers($event => (_ctx.tileAction(row)), ["stop"]),
+                                onPointerdown: _cache[6] || (_cache[6] = _withModifiers(() => {}, ["stop"]))
                               }, [
-                                _cache[16] || (_cache[16] = _createElementVNode("svg", {
-                                  viewBox: "0 0 24 24",
-                                  "aria-hidden": "true"
-                                }, [
-                                  _createElementVNode("use", { href: "#rename" })
-                                ], -1 /* CACHED */)),
-                                _createElementVNode("span", null, _toDisplayString(_ctx.L.rename), 1 /* TEXT */)
-                              ], 8 /* PROPS */, _hoisted_38),
-                              _createElementVNode("button", {
-                                type: "button",
-                                onClick: $event => (_ctx.move(row.item))
-                              }, [
-                                _cache[17] || (_cache[17] = _createElementVNode("svg", {
-                                  viewBox: "0 0 24 24",
-                                  "aria-hidden": "true"
-                                }, [
-                                  _createElementVNode("use", { href: "#move-to-folder" })
-                                ], -1 /* CACHED */)),
-                                _createElementVNode("span", null, _toDisplayString(_ctx.L.moveTo), 1 /* TEXT */)
-                              ], 8 /* PROPS */, _hoisted_39),
-                              _createElementVNode("button", {
-                                type: "button",
-                                onClick: $event => (_ctx.copy(row.item))
-                              }, [
-                                _cache[18] || (_cache[18] = _createElementVNode("svg", {
-                                  viewBox: "0 0 24 24",
-                                  "aria-hidden": "true"
-                                }, [
-                                  _createElementVNode("use", { href: "#copy" })
-                                ], -1 /* CACHED */)),
-                                _createElementVNode("span", null, _toDisplayString(_ctx.L.copy), 1 /* TEXT */)
-                              ], 8 /* PROPS */, _hoisted_40),
-                              (row.t.badge==='cloudOnly')
-                                ? (_openBlock(), _createElementBlock("button", {
-                                    key: 0,
-                                    type: "button",
-                                    onClick: $event => (_ctx.openTile(row.item))
-                                  }, [
-                                    _cache[19] || (_cache[19] = _createElementVNode("svg", {
-                                      viewBox: "0 0 24 24",
-                                      "aria-hidden": "true"
-                                    }, [
-                                      _createElementVNode("use", { href: "#download" })
-                                    ], -1 /* CACHED */)),
-                                    _createElementVNode("span", null, _toDisplayString(_ctx.L.pullLocal), 1 /* TEXT */)
-                                  ], 8 /* PROPS */, _hoisted_41))
-                                : _createCommentVNode("v-if", true),
-                              (row.t.badge==='cloudOnly')
-                                ? (_openBlock(), _createElementBlock("button", {
-                                    key: 1,
-                                    type: "button",
-                                    onClick: $event => (_ctx.keepOffline(row.item))
-                                  }, [
-                                    _cache[20] || (_cache[20] = _createElementVNode("svg", {
-                                      viewBox: "0 0 24 24",
-                                      "aria-hidden": "true"
-                                    }, [
-                                      _createElementVNode("use", { href: "#local-cache" })
-                                    ], -1 /* CACHED */)),
-                                    _createElementVNode("span", null, _toDisplayString(_ctx.L.keepOffline), 1 /* TEXT */)
-                                  ], 8 /* PROPS */, _hoisted_42))
-                                : _createCommentVNode("v-if", true),
-                              (row.t.badge==='localOnly' || row.t.badge==='float' || row.t.badge==='dirtyBoth' || row.t.badge==='conflictBoth')
-                                ? (_openBlock(), _createElementBlock("button", {
-                                    key: 2,
+                                _createElementVNode("span", {
+                                  class: "gallery-tile-action-ico",
+                                  innerHTML: _ctx.badgeIcon2(row.act.icon)
+                                }, null, 8 /* PROPS */, _hoisted_21),
+                                (row.act.verb)
+                                  ? (_openBlock(), _createElementBlock("span", _hoisted_22, _toDisplayString(row.act.title), 1 /* TEXT */))
+                                  : _createCommentVNode("v-if", true)
+                              ], 42 /* CLASS, PROPS, NEED_HYDRATION */, _hoisted_20)
+                            ]))
+                          : _createCommentVNode("v-if", true),
+                        (row.t.encrypted)
+                          ? (_openBlock(), _createElementBlock("span", {
+                              key: 2,
+                              class: "gallery-tile-lockmark",
+                              title: _ctx.L.encrypted,
+                              innerHTML: _ctx.ICON.lock
+                            }, null, 8 /* PROPS */, _hoisted_23))
+                          : _createCommentVNode("v-if", true),
+                        _createElementVNode("div", _hoisted_24, [
+                          (row.t.isActive)
+                            ? (_openBlock(), _createElementBlock("span", _hoisted_25, _toDisplayString(_ctx.L.activeTag), 1 /* TEXT */))
+                            : _createCommentVNode("v-if", true),
+                          _createElementVNode("div", {
+                            class: "gallery-tile-name",
+                            title: row.t.identifier
+                          }, [
+                            (row.marker==='unread')
+                              ? (_openBlock(), _createElementBlock("span", {
+                                  key: 0,
+                                  class: "gallery-marker unread",
+                                  title: _ctx.L.unread
+                                }, null, 8 /* PROPS */, _hoisted_27))
+                              : _createCommentVNode("v-if", true),
+                            _createTextVNode(_toDisplayString(row.t.stem), 1 /* TEXT */)
+                          ], 8 /* PROPS */, _hoisted_26),
+                          (row.sub)
+                            ? (_openBlock(), _createElementBlock("div", {
+                                key: 1,
+                                class: "gallery-tile-sub",
+                                title: row.sub
+                              }, _toDisplayString(row.sub), 9 /* TEXT, PROPS */, _hoisted_28))
+                            : _createCommentVNode("v-if", true),
+                          _createElementVNode("div", _hoisted_29, [
+                            (row.t.encrypted)
+                              ? (_openBlock(), _createElementBlock("span", {
+                                  key: 0,
+                                  class: "gallery-tile-state-icon enc",
+                                  title: _ctx.L.encrypted,
+                                  innerHTML: _ctx.ICON.lock
+                                }, null, 8 /* PROPS */, _hoisted_30))
+                              : _createCommentVNode("v-if", true),
+                            _createElementVNode("span", {
+                              class: _normalizeClass('gallery-tile-state-icon b-' + row.t.badge),
+                              title: row.t.badgeTitle,
+                              innerHTML: _ctx.badgeIcon(row.t.badge)
+                            }, null, 10 /* CLASS, PROPS */, _hoisted_31),
+                            _createElementVNode("span", null, _toDisplayString(_ctx.fmtMeta(row.t)), 1 /* TEXT */)
+                          ])
+                        ]),
+                        _createElementVNode("button", {
+                          type: "button",
+                          class: "gallery-tile-menu-btn",
+                          "aria-label": _ctx.L.more,
+                          onClick: _withModifiers($event => (_ctx.toggleMenu(row.t.identifier, $event)), ["stop"])
+                        }, [...(_cache[12] || (_cache[12] = [
+                          _createElementVNode("svg", {
+                            viewBox: "0 0 24 24",
+                            "aria-hidden": "true"
+                          }, [
+                            _createElementVNode("use", { href: "#more" })
+                          ], -1 /* CACHED */)
+                        ]))], 8 /* PROPS */, _hoisted_32),
+                        (_openBlock(), _createBlock(_Teleport, { to: _ctx.menuMount }, [
+                          _createElementVNode("div", {
+                            class: "gallery-tile-menu-popup hidden",
+                            "data-menu": row.t.identifier,
+                            onClick: _cache[7] || (_cache[7] = _withModifiers(() => {}, ["stop"]))
+                          }, [
+                            (row.t.ghost)
+                              ? (_openBlock(), _createElementBlock(_Fragment, { key: 0 }, [
+                                  _createElementVNode("div", _hoisted_34, _toDisplayString(_ctx.L.divergedNote), 1 /* TEXT */),
+                                  _createElementVNode("button", {
                                     type: "button",
                                     onClick: $event => (_ctx.resolve(row.item))
                                   }, [
-                                    _cache[21] || (_cache[21] = _createElementVNode("svg", {
+                                    _cache[13] || (_cache[13] = _createElementVNode("svg", {
                                       viewBox: "0 0 24 24",
                                       "aria-hidden": "true"
                                     }, [
                                       _createElementVNode("use", { href: "#cloud-pending" })
                                     ], -1 /* CACHED */)),
                                     _createElementVNode("span", null, _toDisplayString(_ctx.L.resolve), 1 /* TEXT */)
-                                  ], 8 /* PROPS */, _hoisted_43))
-                                : _createCommentVNode("v-if", true),
-                              (row.t.hasLocal && row.t.hasCloud)
-                                ? (_openBlock(), _createElementBlock("button", {
-                                    key: 3,
+                                  ], 8 /* PROPS */, _hoisted_35),
+                                  _createElementVNode("button", {
                                     type: "button",
-                                    onClick: $event => (_ctx.unload(row.item))
+                                    onClick: $event => (_ctx.rename(row.item))
                                   }, [
-                                    _cache[22] || (_cache[22] = _createElementVNode("svg", {
+                                    _cache[14] || (_cache[14] = _createElementVNode("svg", {
                                       viewBox: "0 0 24 24",
                                       "aria-hidden": "true"
                                     }, [
-                                      _createElementVNode("use", { href: "#unload-local-cache" })
+                                      _createElementVNode("use", { href: "#rename" })
                                     ], -1 /* CACHED */)),
-                                    _createElementVNode("span", null, _toDisplayString(_ctx.L.unloadLocal), 1 /* TEXT */)
-                                  ], 8 /* PROPS */, _hoisted_44))
-                                : _createCommentVNode("v-if", true),
-                              (row.encMenu.encrypt)
+                                    _createElementVNode("span", null, _toDisplayString(_ctx.L.renameKeep), 1 /* TEXT */)
+                                  ], 8 /* PROPS */, _hoisted_36)
+                                ], 64 /* STABLE_FRAGMENT */))
+                              : (row.t.pendingGone)
                                 ? (_openBlock(), _createElementBlock("button", {
-                                    key: 4,
+                                    key: 1,
                                     type: "button",
-                                    onClick: $event => (_ctx.encryptItem(row.item))
+                                    onClick: $event => (_ctx.resolve(row.item))
                                   }, [
-                                    _cache[23] || (_cache[23] = _createElementVNode("svg", {
+                                    _cache[15] || (_cache[15] = _createElementVNode("svg", {
                                       viewBox: "0 0 24 24",
                                       "aria-hidden": "true"
                                     }, [
-                                      _createElementVNode("use", { href: "#lock" })
+                                      _createElementVNode("use", { href: "#cloud-pending" })
                                     ], -1 /* CACHED */)),
-                                    _createElementVNode("span", null, _toDisplayString(_ctx.L.encrypt), 1 /* TEXT */)
-                                  ], 8 /* PROPS */, _hoisted_45))
-                                : _createCommentVNode("v-if", true),
-                              (row.encMenu.decrypt)
-                                ? (_openBlock(), _createElementBlock("button", {
-                                    key: 5,
-                                    type: "button",
-                                    onClick: $event => (_ctx.decryptItem(row.item))
-                                  }, [
-                                    _cache[24] || (_cache[24] = _createElementVNode("svg", {
-                                      viewBox: "0 0 24 24",
-                                      "aria-hidden": "true"
+                                    _createElementVNode("span", null, _toDisplayString(_ctx.L.resolve), 1 /* TEXT */)
+                                  ], 8 /* PROPS */, _hoisted_37))
+                                : (_openBlock(), _createElementBlock(_Fragment, { key: 2 }, [
+                                    _createElementVNode("button", {
+                                      type: "button",
+                                      onClick: $event => (_ctx.rename(row.item))
                                     }, [
-                                      _createElementVNode("use", { href: "#unlock" })
-                                    ], -1 /* CACHED */)),
-                                    _createElementVNode("span", null, _toDisplayString(_ctx.L.decrypt), 1 /* TEXT */)
-                                  ], 8 /* PROPS */, _hoisted_46))
-                                : _createCommentVNode("v-if", true),
-                              _createElementVNode("button", {
-                                type: "button",
-                                class: "danger",
-                                onClick: $event => (_ctx.del(row.item))
-                              }, [
-                                _cache[25] || (_cache[25] = _createElementVNode("svg", {
-                                  viewBox: "0 0 24 24",
-                                  "aria-hidden": "true"
-                                }, [
-                                  _createElementVNode("use", { href: "#trash-can" })
-                                ], -1 /* CACHED */)),
-                                _createElementVNode("span", null, _toDisplayString(_ctx.L.toTrash), 1 /* TEXT */)
-                              ], 8 /* PROPS */, _hoisted_47)
-                            ], 64 /* STABLE_FRAGMENT */))
-                    ], 8 /* PROPS */, _hoisted_33)
-                  ], 8 /* PROPS */, ["to"]))
-                ], 10 /* CLASS, PROPS */, _hoisted_17))
+                                      _cache[16] || (_cache[16] = _createElementVNode("svg", {
+                                        viewBox: "0 0 24 24",
+                                        "aria-hidden": "true"
+                                      }, [
+                                        _createElementVNode("use", { href: "#rename" })
+                                      ], -1 /* CACHED */)),
+                                      _createElementVNode("span", null, _toDisplayString(_ctx.L.rename), 1 /* TEXT */)
+                                    ], 8 /* PROPS */, _hoisted_38),
+                                    _createElementVNode("button", {
+                                      type: "button",
+                                      onClick: $event => (_ctx.move(row.item))
+                                    }, [
+                                      _cache[17] || (_cache[17] = _createElementVNode("svg", {
+                                        viewBox: "0 0 24 24",
+                                        "aria-hidden": "true"
+                                      }, [
+                                        _createElementVNode("use", { href: "#move-to-folder" })
+                                      ], -1 /* CACHED */)),
+                                      _createElementVNode("span", null, _toDisplayString(_ctx.L.moveTo), 1 /* TEXT */)
+                                    ], 8 /* PROPS */, _hoisted_39),
+                                    _createElementVNode("button", {
+                                      type: "button",
+                                      onClick: $event => (_ctx.copy(row.item))
+                                    }, [
+                                      _cache[18] || (_cache[18] = _createElementVNode("svg", {
+                                        viewBox: "0 0 24 24",
+                                        "aria-hidden": "true"
+                                      }, [
+                                        _createElementVNode("use", { href: "#copy" })
+                                      ], -1 /* CACHED */)),
+                                      _createElementVNode("span", null, _toDisplayString(_ctx.L.copy), 1 /* TEXT */)
+                                    ], 8 /* PROPS */, _hoisted_40),
+                                    (row.t.badge==='cloudOnly')
+                                      ? (_openBlock(), _createElementBlock("button", {
+                                          key: 0,
+                                          type: "button",
+                                          onClick: $event => (_ctx.openTile(row.item))
+                                        }, [
+                                          _cache[19] || (_cache[19] = _createElementVNode("svg", {
+                                            viewBox: "0 0 24 24",
+                                            "aria-hidden": "true"
+                                          }, [
+                                            _createElementVNode("use", { href: "#download" })
+                                          ], -1 /* CACHED */)),
+                                          _createElementVNode("span", null, _toDisplayString(_ctx.L.pullLocal), 1 /* TEXT */)
+                                        ], 8 /* PROPS */, _hoisted_41))
+                                      : _createCommentVNode("v-if", true),
+                                    (row.t.badge==='cloudOnly')
+                                      ? (_openBlock(), _createElementBlock("button", {
+                                          key: 1,
+                                          type: "button",
+                                          onClick: $event => (_ctx.keepOffline(row.item))
+                                        }, [
+                                          _cache[20] || (_cache[20] = _createElementVNode("svg", {
+                                            viewBox: "0 0 24 24",
+                                            "aria-hidden": "true"
+                                          }, [
+                                            _createElementVNode("use", { href: "#local-cache" })
+                                          ], -1 /* CACHED */)),
+                                          _createElementVNode("span", null, _toDisplayString(_ctx.L.keepOffline), 1 /* TEXT */)
+                                        ], 8 /* PROPS */, _hoisted_42))
+                                      : _createCommentVNode("v-if", true),
+                                    (row.t.badge==='localOnly' || row.t.badge==='float' || row.t.badge==='dirtyBoth' || row.t.badge==='conflictBoth')
+                                      ? (_openBlock(), _createElementBlock("button", {
+                                          key: 2,
+                                          type: "button",
+                                          onClick: $event => (_ctx.resolve(row.item))
+                                        }, [
+                                          _cache[21] || (_cache[21] = _createElementVNode("svg", {
+                                            viewBox: "0 0 24 24",
+                                            "aria-hidden": "true"
+                                          }, [
+                                            _createElementVNode("use", { href: "#cloud-pending" })
+                                          ], -1 /* CACHED */)),
+                                          _createElementVNode("span", null, _toDisplayString(_ctx.L.resolve), 1 /* TEXT */)
+                                        ], 8 /* PROPS */, _hoisted_43))
+                                      : _createCommentVNode("v-if", true),
+                                    (row.t.hasLocal && row.t.hasCloud)
+                                      ? (_openBlock(), _createElementBlock("button", {
+                                          key: 3,
+                                          type: "button",
+                                          onClick: $event => (_ctx.unload(row.item))
+                                        }, [
+                                          _cache[22] || (_cache[22] = _createElementVNode("svg", {
+                                            viewBox: "0 0 24 24",
+                                            "aria-hidden": "true"
+                                          }, [
+                                            _createElementVNode("use", { href: "#unload-local-cache" })
+                                          ], -1 /* CACHED */)),
+                                          _createElementVNode("span", null, _toDisplayString(_ctx.L.unloadLocal), 1 /* TEXT */)
+                                        ], 8 /* PROPS */, _hoisted_44))
+                                      : _createCommentVNode("v-if", true),
+                                    (row.encMenu.encrypt)
+                                      ? (_openBlock(), _createElementBlock("button", {
+                                          key: 4,
+                                          type: "button",
+                                          onClick: $event => (_ctx.encryptItem(row.item))
+                                        }, [
+                                          _cache[23] || (_cache[23] = _createElementVNode("svg", {
+                                            viewBox: "0 0 24 24",
+                                            "aria-hidden": "true"
+                                          }, [
+                                            _createElementVNode("use", { href: "#lock" })
+                                          ], -1 /* CACHED */)),
+                                          _createElementVNode("span", null, _toDisplayString(_ctx.L.encrypt), 1 /* TEXT */)
+                                        ], 8 /* PROPS */, _hoisted_45))
+                                      : _createCommentVNode("v-if", true),
+                                    (row.encMenu.decrypt)
+                                      ? (_openBlock(), _createElementBlock("button", {
+                                          key: 5,
+                                          type: "button",
+                                          onClick: $event => (_ctx.decryptItem(row.item))
+                                        }, [
+                                          _cache[24] || (_cache[24] = _createElementVNode("svg", {
+                                            viewBox: "0 0 24 24",
+                                            "aria-hidden": "true"
+                                          }, [
+                                            _createElementVNode("use", { href: "#unlock" })
+                                          ], -1 /* CACHED */)),
+                                          _createElementVNode("span", null, _toDisplayString(_ctx.L.decrypt), 1 /* TEXT */)
+                                        ], 8 /* PROPS */, _hoisted_46))
+                                      : _createCommentVNode("v-if", true),
+                                    _createElementVNode("button", {
+                                      type: "button",
+                                      class: "danger",
+                                      onClick: $event => (_ctx.del(row.item))
+                                    }, [
+                                      _cache[25] || (_cache[25] = _createElementVNode("svg", {
+                                        viewBox: "0 0 24 24",
+                                        "aria-hidden": "true"
+                                      }, [
+                                        _createElementVNode("use", { href: "#trash-can" })
+                                      ], -1 /* CACHED */)),
+                                      _createElementVNode("span", null, _toDisplayString(_ctx.L.toTrash), 1 /* TEXT */)
+                                    ], 8 /* PROPS */, _hoisted_47)
+                                  ], 64 /* STABLE_FRAGMENT */))
+                          ], 8 /* PROPS */, _hoisted_33)
+                        ], 8 /* PROPS */, ["to"]))
+                      ], 10 /* CLASS, PROPS */, _hoisted_17))
+                ], 64 /* STABLE_FRAGMENT */))
               }), 128 /* KEYED_FRAGMENT */)),
               (_openBlock(true), _createElementBlock(_Fragment, null, _renderList((_ctx.attentionOnly ? [] : _ctx.imageTiles), (im) => {
                 return (_openBlock(), _createElementBlock("div", {

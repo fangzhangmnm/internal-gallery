@@ -2628,7 +2628,7 @@ export interface GalleryScreenDeps {
     vue: VueRuntime;
 }
 
-// @public (undocumented)
+// @public
 export interface GallerySnapshot {
     // (undocumented)
     folder: string;
@@ -2640,6 +2640,8 @@ export interface GallerySnapshot {
     items: GItem[];
     // (undocumented)
     others: CloudOtherItem[];
+    // (undocumented)
+    timeline: TimelineEntry[];
 }
 
 // @public (undocumented)
@@ -2778,6 +2780,9 @@ export function isPng(bytes: Uint8Array): boolean;
 export function itemTime(it: GalleryItem): number;
 
 // @public
+export function leadingDate(name: string): string | null;
+
+// @public
 export interface LibraryManifest {
     // (undocumented)
     files: BackupFileRef[];
@@ -2815,6 +2820,9 @@ export interface MakeThumbOpts {
 
 // @public (undocumented)
 export function memoryThumbStore(): ThumbStore;
+
+// @public
+export function mergeTimeline(items: readonly GItem[], folderNames: readonly string[]): TimelineEntry[];
 
 // @public
 export function mimeForImageName(name: string): string;
@@ -3164,6 +3172,18 @@ export interface TileInfo {
     // (undocumented)
     syncState?: SyncState;
 }
+
+// @public
+export function timelineCompare(a: string, b: string): number;
+
+// @public
+export type TimelineEntry = {
+    type: "folder";
+    name: string;
+} | {
+    type: "doc";
+    item: GItem;
+};
 
 // @public
 function toText(): string;

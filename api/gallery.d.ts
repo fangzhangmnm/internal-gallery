@@ -321,7 +321,8 @@ export declare function createGalleryDataFace(deps: {
     store: () => DataFaceStore | null;
     policy?: DataFacePolicy;
 }): {
-    /** 订阅当前夹：立即本地帧、云端到了同一 cb 再闪。文档按主干 natural 倒序；图片按修改时间倒序；杂物显示不打开；子夹自然正序。 */
+    /** 订阅当前夹：立即本地帧、云端到了同一 cb 再闪。作品和子夹合成一列时间线（0.8.12：子夹不再钉在最上面；规则 = core/model/timeline-order.ts）；
+     *  图片按修改时间倒序；杂物显示不打开。 */
     watchFolder(folder: string, cb: (snap: GallerySnapshot) => void, opts?: {
         onError?: (err: unknown, phase: WatchFolderErrorPhase) => void;
     }): () => void;
@@ -2412,12 +2413,15 @@ export declare interface GalleryScreenDeps {
     reloadApp?: () => void;
 }
 
+/** timeline（0.8.12）= 作品和子夹合成的一列，图库就按它画（规则只此一处：core/model/timeline-order.ts）。
+ *  items 是其中的作品（同一顺序）；folderNames 是子夹名、自然正序（「移动到…」的名单用，不是显示顺序）。 */
 export declare interface GallerySnapshot {
     folder: string;
     items: GItem[];
     images: CloudImageItem[];
     others: CloudOtherItem[];
     folderNames: string[];
+    timeline: TimelineEntry[];
 }
 
 export declare type GalleryT = (key: GalleryTextKey, params?: Record<string, string | number>) => string;
@@ -2527,6 +2531,9 @@ export declare function isPng(bytes: Uint8Array): boolean;
 
 export declare function itemTime(it: GalleryItem): number;
 
+/** 名字开头的 8 位日期（yyyymmdd）；不带 → null。「202411051234」这种 8 位后面还紧跟数字的不算。 */
+export declare function leadingDate(name: string): string | null;
+
 /** 全库清单。partialFolders = 没拿到权威帧的夹（诚实性：清单可能缺项，UI 要说出来）。 */
 export declare interface LibraryManifest {
     files: BackupFileRef[];
@@ -2553,6 +2560,9 @@ export declare interface MakeThumbOpts {
 }
 
 export declare function memoryThumbStore(): ThumbStore;
+
+/** 作品和文件夹合成一列。 */
+export declare function mergeTimeline(items: readonly GItem[], folderNames: readonly string[]): TimelineEntry[];
 
 /** File 包装的 MIME（decodeImageFile 实际按字节嗅探，给对只是礼貌）。 */
 export declare function mimeForImageName(name: string): string;
@@ -2857,6 +2867,18 @@ export declare interface TileInfo {
     /** 在回收站 / 备份箱里的卡片才有。 */
     aside?: AsideKind;
 }
+
+/** 时间线上两个名字谁在上：负 = a 在上。 */
+export declare function timelineCompare(a: string, b: string): number;
+
+/** 时间线上的一格：文件夹（name = 相对当前夹的夹名）或作品。 */
+export declare type TimelineEntry = {
+    type: "folder";
+    name: string;
+} | {
+    type: "doc";
+    item: GItem;
+};
 
 /** 复制/展示用的整段文本：环境头 + 每条一行「MM-DD HH:MM:SS.mmm L msg」（旧在上、新在下）。 */
 declare function toText(): string;

@@ -33,7 +33,14 @@ describe("data-face · watchFolder 路由与排序（当前夹唯一列举面）
     eq(got.images.map((i) => i.label).join("|"), "pic.png|old.png"); eq(got.images[0].identifier, "pic.png");
     eq(got.images[1].cached, true, "synced 图片 = 本地有副本");
     eq(got.others.map((i) => i.label).join("|"), "notes.md", "杂物显示不打开");
-    eq(got.folderNames.join("|"), "sub2|sub10");
+    eq(got.folderNames.join("|"), "sub2|sub10", "folderNames 是「移动到…」的名单，自然正序，不是显示顺序");
+    eq(got.timeline.map((e) => e.type === "folder" ? `[${e.name}]` : e.item.identifier).join("|"), "[sub10]|[sub2]|10.ora|2.ora|1.ora", "0.8.12：作品和子夹合成一列（都不带日期 → 名字自然倒序）");
+  });
+  it("0.8.12：带日期的子夹落在时间线中间；items 和 timeline 里的作品同一顺序", () => {
+    const face = createGalleryDataFace({ store: () => fakeStore({ items: [item("20240101 a.ora", "synced"), item("日记.ora", "synced"), item("20250101 b.ora", "synced")], folders: ["20240601 旅行"] }) });
+    let got; face.watchFolder("", (s) => { got = s; });
+    eq(got.timeline.map((e) => e.type === "folder" ? `[${e.name}]` : e.item.stem).join("|"), "日记|20250101 b|[20240601 旅行]|20240101 a");
+    eq(got.items.map((i) => i.stem).join("|"), "日记|20250101 b|20240101 a");
   });
   it("换一张表（WXHW：.txt + .webxiaoheiwu.zip）→ ora 变杂物；哪些是文档由 store 说，本包没有 isDoc 钩子", () => {
     const face = createGalleryDataFace({ store: () => fakeStore({ items: [item("a.txt", "synced"), item("p.webxiaoheiwu.zip", "synced"), item("x.ora", "synced")], folders: [] }, WX), policy: { isImage: () => false } });

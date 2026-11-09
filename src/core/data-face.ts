@@ -7,11 +7,14 @@ import type { GItem } from "./model/gallery-view-model.ts";
 import { ASIDE, asideItemFrom, sortAside, type AsideItem, type AsideKind } from "./model/aside.ts";
 import { isImagePath } from "./model/cloud-image-model.ts";
 import { naturalCompare } from "./model/natural-order.ts";
+import { timelineCompare, mergeTimeline, type TimelineEntry } from "./model/timeline-order.ts";
 
 /** 不是文档的文件（图片 / 杂物）：identifier = 身份；label = 最后一段（给人看）。 */
 export interface CloudOtherItem { identifier: string; label: string; size?: number; lastModified?: number; }
 export interface CloudImageItem { identifier: string; label: string; size?: number; lastModified?: number; cached: boolean; }
-export interface GallerySnapshot { folder: string; items: GItem[]; images: CloudImageItem[]; others: CloudOtherItem[]; folderNames: string[]; }
+/** timeline（0.8.12）= 作品和子夹合成的一列，图库就按它画（规则只此一处：core/model/timeline-order.ts）。
+ *  items 是其中的作品（同一顺序）；folderNames 是子夹名、自然正序（「移动到…」的名单用，不是显示顺序）。 */
+export interface GallerySnapshot { folder: string; items: GItem[]; images: CloudImageItem[]; others: CloudOtherItem[]; folderNames: string[]; timeline: TimelineEntry[]; }
 
 /** 数据面能看见的 store 子集（多库切换后实例会变，所以是 getter）。 */
 export interface DataFaceStore {
@@ -55,16 +58,15 @@ export function createGalleryDataFace(deps: { store: () => DataFaceStore | null;
     .sort((a, b) => naturalCompare(a.label, b.label));
   const folderNamesOf = (folder: string, folders: string[]) => { const prefix = folder ? `${folder}/` : ""; return folders.map((f) => f.slice(prefix.length)).filter(Boolean).sort(naturalCompare); };
   return {
-    /** 订阅当前夹：立即本地帧、云端到了同一 cb 再闪。文档按主干 natural 倒序；图片按修改时间倒序；杂物显示不打开；子夹自然正序。 */
+    /** 订阅当前夹：立即本地帧、云端到了同一 cb 再闪。作品和子夹合成一列时间线（0.8.12：子夹不再钉在最上面；规则 = core/model/timeline-order.ts）；
+     *  图片按修改时间倒序；杂物显示不打开。 */
     watchFolder(folder: string, cb: (snap: GallerySnapshot) => void, opts?: { onError?: (err: unknown, phase: WatchFolderErrorPhase) => void }): () => void {
       const st = requireStore(), ids = st.identifiers;
-      return st.files.watchFolder(folder, (snap) => cb({
-        folder: snap.folder,
-        items: snap.items.map((it) => galleryItemFromStoreItem(it, ids)).filter((g): g is GItem => g != null).sort((a, b) => naturalCompare(b.stem, a.stem) || naturalCompare(b.identifier, a.identifier)),
-        images: toImageItems(snap.items, ids),
-        others: toOtherItems(snap.items, ids),
-        folderNames: folderNamesOf(folder, snap.folders),
-      }), opts);
+      return st.files.watchFolder(folder, (snap) => {
+        const items = snap.items.map((it) => galleryItemFromStoreItem(it, ids)).filter((g): g is GItem => g != null).sort((a, b) => timelineCompare(a.stem, b.stem) || naturalCompare(b.identifier, a.identifier));
+        const folderNames = folderNamesOf(folder, snap.folders);
+        cb({ folder: snap.folder, items, images: toImageItems(snap.items, ids), others: toOtherItems(snap.items, ids), folderNames, timeline: mergeTimeline(items, folderNames) });
+      }, opts);
     },
     watchFolderImages(folder: string, cb: (snap: { folder: string; images: CloudImageItem[]; folderNames: string[] }) => void): () => void {
       const st = requireStore(), ids = st.identifiers;
