@@ -8,6 +8,8 @@ export * from "./core/model/gallery-model.ts";
 export * from "./core/model/gallery-path.ts";
 export * from "./core/model/natural-order.ts";
 export * from "./core/model/timeline-order.ts";   // 0.8.12：时间线的顺序（作品和文件夹同一套明文规则）
+export * from "./core/model/versions.ts";   // 0.9.0：「存下来的一版」的名字规则（<原主干>.backup-<日期>[-n]）
+export * from "./core/model/fold-groups.ts";   // 0.9.0：收起（细条 / 原作卡片上的 +N）= 纯显示的归组
 export * from "./core/model/gallery-view-model.ts";
 export type { AsideKind, AsideScope, AsideItem, AsideEmptyResult } from "./core/model/aside.ts";   // 0.5.0：搁置区（回收站 / 备份箱）只出类型；差异表 ASIDE 不出门
 export * from "./core/model/cloud-image-model.ts";

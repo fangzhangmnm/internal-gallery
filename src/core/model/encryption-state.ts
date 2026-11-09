@@ -6,6 +6,8 @@
 //   local = 本地字节是加密容器（宿主 encryption.isEncrypted → store file.isEncrypted；纯本地读头，无网络）；
 //   peek  = store 的 getPeek 回的是密文 peek（宿主 encryption.isEncryptedPeekBlob 认的是 store 打的 ENC_PEEK_MIME）——现拉的、缓存里的都算；
 //   搁置区（回收站 / 备份箱）的卡片另有 store 的 TrashItem.encrypted（云端名带容器后缀），模板直接用，不进这张表。
+// 0.9.0：下面说的「还缺的一路」接上了——store 2.2.6 起列举条目带 cloudSealed，数据面原样透传成 GItem.cloudSealed，isEncrypted 的第三个参数就是它。
+//   老版本的库不带这个字段 = 这一路不说话，行为同 0.8.11。以下原注释留作背景。
 // ⚠ 还缺的一路：**活文件的云端名带不带容器后缀**。store 知道（identifiers.fromCloud 的 sealed），但列举出来的 Item 不带这个字段（截至 store 2.2.5），
 //   图库拿不到。所以「纯云端、这台从没开过、种类又没有密文 peek」的那份（CatsUp：getHead 对加密件回 null）第一次打开之前仍然显示不加密。
 //   要 store 在 Item 上带出这个事实才能补；那时它就是这里的第三路（ai-docs/20261104-0.8.11-encrypted-state-display.md §3）。
@@ -27,8 +29,9 @@ export interface EncryptionState {
   noteLocal(identifier: string, version: string, encrypted: boolean): void;
   /** store 的 peek 说这一版是加密容器。 */
   notePeek(identifier: string, version: string): void;
-  /** 加密态 = 本地字节说加密 ∨ store 的事实说加密。锁图标、「不显示明文封面」、不取事实都看它。 */
-  isEncrypted(identifier: string, version: string): boolean;
+  /** 加密态 = 本地字节说加密 ∨ store 的事实说加密。锁图标、「不显示明文封面」、不取事实都看它。
+   *  cloudSealed（0.9.0，第三路）= store 列举时说「云端那份是加密容器」（store ≥ 2.2.6 的 Item.cloudSealed；它随每一帧现给，不用记）。 */
+  isEncrypted(identifier: string, version: string, cloudSealed?: boolean): boolean;
   /** 只看本地字节。「解除加密…」只对本地确实是容器的给（本地还是明文、云端已加密的那一刻，解除会被 store 回「这不是加密作品」）。 */
   isLocalEncrypted(identifier: string, version: string): boolean;
   /** 忘掉这一份（宿主 / 动词说加密态变了）。 */
@@ -44,7 +47,7 @@ export function createEncryptionState(rec: Record<string, EncFacts> = {}): Encry
     needsLocalProbe: (id, v) => rec[id]?.lv !== v,
     noteLocal: (id, v, encrypted) => { const e = entry(id); e.lv = v; e.local = encrypted; },
     notePeek: (id, v) => { entry(id).pv = v; },
-    isEncrypted: (id, v) => localOf(id) || rec[id]?.pv === v,
+    isEncrypted: (id, v, cloudSealed) => cloudSealed === true || localOf(id) || rec[id]?.pv === v,
     isLocalEncrypted: (id) => localOf(id),
     forget: (id) => { delete rec[id]; },
   };

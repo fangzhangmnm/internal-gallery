@@ -5,6 +5,7 @@
 import { hasLocalCopy, hasCloudCopy, hasUnpushed, type GItem } from "./model/gallery-view-model.ts";
 import { ASIDE, type AsideItem, type AsideKind, type AsideScope, type AsideEmptyResult } from "./model/aside.ts";
 import { copyTargetName } from "./model/gallery-model.ts";
+import { parseVersionStem, versionTargetName, versionsOf, dayStamp } from "./model/versions.ts";
 import { pathFolder, pathJoin } from "./model/gallery-path.ts";
 import type { Identifiers } from "@internal/store";
 import { naturalCompare } from "./model/natural-order.ts";
@@ -42,7 +43,7 @@ export interface VerbFile {
   resolve(): Promise<{ status: string; reason?: string }>;
   getEncryptedBlob(): Promise<Blob | null>;
   open(): Promise<Blob | null>;
-  save(bytes: Blob, opts: { tryPush: boolean }): Promise<unknown>;
+  save(bytes: Blob, opts: { tryPush: boolean; /** 0.9.0（store 2.3.0）：新建的这份生来锁着（存下来的一版）。老版本的库忽略它。 */ bornLocked?: boolean }): Promise<unknown>;
   encrypt(o: { isOnline: () => boolean }): Promise<{ status: string }>;
   decrypt(o: { isOnline: () => boolean }): Promise<{ status: string }>;
   /** 0.3.0：留一份离线副本（store RawFile 0.13.0 已有同名面）。 */
@@ -58,6 +59,18 @@ export interface VerbStore {
     purgeTrash(o: { trashKey: string | null; cloudRef: string | null }): Promise<unknown>;
     emptyTrash(o: { scope: AsideScope }): Promise<AsideEmptyResult>;
     emptyBackup(o: { scope: AsideScope }): Promise<AsideEmptyResult>;
+    // ── 0.9.0（store ≥ 2.3.0 才有，全部可选：老版本的库没有 = 界面上没有锁 / 星 / 收起）──
+    /** 这个库的作品默认只读（createStore({ lockByDefault })）。 */
+    lockByDefault?: boolean;
+    /** 这个库开了星 / 收起的记号（createStore({ fileMarks })）。 */
+    fileMarks?: boolean;
+    unlock?(identifier: string): Promise<unknown>;
+    lock?(identifier: string): Promise<void>;
+    watchUnlocks?(cb: (live: { identifier: string }[]) => void): () => void;
+    star?(identifier: string): Promise<void>;
+    unstar?(identifier: string): Promise<void>;
+    fold?(identifier: string): Promise<void>;
+    unfold?(identifier: string): Promise<void>;
   };
 }
 export interface VerbEncryption {
@@ -160,12 +173,27 @@ export function createGalleryVerbs(d: VerbDeps) {
     });
   }
 
-  /** 复制：加密源原样搬密文（不解壳不问密码；明文派生物不落持久层），明文源 open()；目标 = 同夹「<主干> 副本」按当前夹快照去重，后缀不动。 */
+  /** 一份作品「原样」的字节（复制 / 存一版用）：加密件 = 密文容器原样（不解壳不问密码；明文派生物不落持久层），明文件 = open()。
+   *  0.9.0 补的洞：纯云端的加密件以前走 open() 拿到的是**解出来的明文**，复制出来就是一份落在本机和云端的明文副本。现在 open() 把它拉到本机之后
+   *  再问一次容器；还是拿不到容器、而库说云端那份是加密的（cloudSealed）→ 拒绝（sealed-no-local），不拿明文凑数。 */
+  async function atRestBytes(item: GItem): Promise<{ bytes: Blob | null; why?: "sealed-no-local" }> {
+    const src = docFile(item.identifier);
+    const sealed = await src.getEncryptedBlob();
+    if (sealed) return { bytes: sealed };
+    const plain = await src.open();
+    const sealedAfterPull = await src.getEncryptedBlob();
+    if (sealedAfterPull) return { bytes: sealedAfterPull };
+    if (item.cloudSealed) return { bytes: null, why: "sealed-no-local" };
+    return { bytes: plain };
+  }
+
+  /** 复制：字节 = atRestBytes（加密源原样搬密文）；目标 = 同夹「<主干> 副本」按当前夹快照去重，后缀不动。 */
   async function copy(item: GItem, currentIdentifiers: readonly string[]): Promise<void> {
     await d.host.busy(t("gal.busy.copy", { base: item.stem }), async () => {
       try {
-        const src = docFile(item.identifier);
-        const bytes: Blob | null = (await src.getEncryptedBlob()) ?? (await src.open());
+        const got = await atRestBytes(item);
+        if (got.why === "sealed-no-local") { d.host.status(t("gal.st.sealedNoLocal"), true); return; }
+        const bytes = got.bytes;
         if (!bytes) { d.host.status(t("gal.st.copyNoBytes"), true); return; }
         const taken = new Set(currentIdentifiers);
         const newIdentifier = copyTargetName(item.identifier, (n) => taken.has(n), ids());
@@ -201,7 +229,8 @@ export function createGalleryVerbs(d: VerbDeps) {
       const key = r.status === "took-cloud" ? "gal.st.resolve.tookCloud" : r.status === "pushed" ? "gal.st.resolve.pushed" : r.status === "trashed" ? "gal.st.resolve.trashed"
         : r.status === "cancelled" ? "gal.st.resolve.cancelled" : r.status === "clean" ? "gal.st.resolve.clean" : r.status === "offline" ? "gal.st.resolve.offline" : "gal.st.resolve.unresolved";
       const bad = key === "gal.st.resolve.offline" || key === "gal.st.resolve.unresolved";
-      d.host.status(t(key, { name: item.stem, e: r.reason ?? r.status }), bad);
+      if (r.status === "unresolved" && r.reason === "starred") d.host.status(t("gal.st.resolve.starred", { name: item.stem }), true);   // 0.9.0 星：面里选了「这份进回收站」，库没动
+      else d.host.status(t(key, { name: item.stem, e: r.reason ?? r.status }), bad);
       if (isActive && (r.status === "took-cloud" || r.status === "trashed") && d.doc.open) await d.doc.open(item);
     } catch (e: unknown) { d.host.status(t("gal.st.resolve.unresolved", { name: item.stem, e: errMsg(e) }), true); }
     finally { _resolving.delete(item.identifier); }
@@ -213,6 +242,7 @@ export function createGalleryVerbs(d: VerbDeps) {
     const isActive = item.identifier === d.host.activeIdentifier();
     const isLocal = hasLocalCopy(item.syncState), isCloud = hasCloudCopy(item.syncState);
     const dirty = isLocal && isCloud && hasUnpushed(item.syncState);
+    if (item.starred) { d.host.status(t("gal.st.starredNoDel", { name: item.stem }), true); return; }   // 0.9.0 星：不弹确认，直接说先撤星（库那一层也拦，StarredError）
     let detail = isLocal && isCloud ? (dirty ? t("gal.del.dirtyDetail") : t("gal.del.syncedDetail")) : isCloud ? t("gal.del.cloudDetail") : t("gal.del.localDetail");
     if (isActive) detail += t("gal.del.activeSuffix");
     if (!(await d.host.confirm(t("gal.dlg.delTitle", { name: item.stem }), detail))) return;
@@ -225,7 +255,7 @@ export function createGalleryVerbs(d: VerbDeps) {
         d.host.status(del.status === "noop" ? t("gal.st.delNothing", { name: item.stem })
           : del.queuedCloudDelete === false ? t("gal.st.delLocalOnly", { name: item.stem })
           : t("gal.st.deleted", { name: item.stem }), del.status === "noop" || del.queuedCloudDelete === false);
-      } catch (e: unknown) { d.host.status(t("gal.st.delFail", { e: errMsg(e) }), true); }
+      } catch (e: unknown) { d.host.status(isStarredError(e) ? t("gal.st.starredNoDel", { name: item.stem }) : t("gal.st.delFail", { e: errMsg(e) }), true); }   // 0.9.0：列表还没带上星（别的设备刚加的）时库会拦
     });
   }
   async function deleteImage(img: { identifier: string; label: string }): Promise<void> {
@@ -326,12 +356,86 @@ export function createGalleryVerbs(d: VerbDeps) {
       await _afterSwap(item, res, t("gal.st.decrypted", { name: item.stem }));
     } catch (e: unknown) { d.host.status(t("gal.st.decryptFail", { e: errMsg(e) }), true); }
   }
+  // ── 0.9.0：锁（改内容之前手动解）/ 星 / 收起 / 存一版。全部走 store 的面，这里只管说话；老版本的库没有这些面 = 响亮说做不了，不装成做了。──
+  const isStarredError = (e: unknown): boolean => (e as { name?: unknown } | null)?.name === "StarredError";
+  const filesFace = () => d.store().files;
+  /** 解锁这份作品（之后能改）。**只在人点了钮之后调**。成 → true。 */
+  async function unlockEdit(item: GItem): Promise<boolean> {
+    try {
+      const f = filesFace();
+      if (!f.unlock) throw new Error("this library has no edit lock (needs @internal/store >= 2.3.0)");
+      await f.unlock(item.identifier);
+      d.host.status(t("gal.st.editUnlocked", { name: item.stem }));
+      return true;
+    } catch (e: unknown) { d.host.status(t("gal.st.editLockFail", { e: errMsg(e) }), true); return false; }
+  }
+  /** 提前锁上（车钥匙那一下）。 */
+  async function lockEdit(item: GItem): Promise<void> {
+    try {
+      const f = filesFace();
+      if (!f.lock) throw new Error("this library has no edit lock (needs @internal/store >= 2.3.0)");
+      await f.lock(item.identifier);
+      d.host.status(t("gal.st.editLocked", { name: item.stem }));
+    } catch (e: unknown) { d.host.status(t("gal.st.editLockFail", { e: errMsg(e) }), true); }
+  }
+  async function setMark(item: GItem, which: "star" | "unstar" | "fold" | "unfold"): Promise<void> {
+    const okKey = ({ star: "gal.st.starred", unstar: "gal.st.unstarred", fold: "gal.st.folded", unfold: "gal.st.unfolded" } as const)[which];
+    try {
+      const fn = filesFace()[which];
+      if (!fn) throw new Error("this library has no stars / tuck-away (needs @internal/store >= 2.3.0 with fileMarks)");
+      await fn.call(filesFace(), item.identifier);
+      d.host.status(t(okKey, { name: item.stem }));
+    } catch (e: unknown) { d.host.status(t("gal.st.marksFail", { e: errMsg(e) }), true); }
+  }
+  /** 存一版 = 复制一份，名字 `<原主干>.backup-<今天>`（同一天再存 `-2`…），和原作同一个文件夹，生来锁着（规则 = core/model/versions.ts）。
+   *  mode "new" = 多一份；"replace-last" = 存到上一版：**先存成新的、成了才把上一份送进回收站**（顺序不能反：先有新的再丢旧的）；上一版加了星 → 留着不动、如实说。
+   *  字节 = 这份作品已经存下的样子（atRestBytes：加密件原样搬密文）；正开着的那份先让编辑器落盘（d.doc.exit，同「处理…」）。
+   *  siblings = 当前夹的作品（起名去重、找上一版用）。存成 → 新那一版的身份；没存成 → null（状态行已经说了为什么）。opts.now 只给测试。 */
+  async function saveVersion(item: GItem, mode: "new" | "replace-last", siblings: readonly GItem[], opts: { now?: Date } = {}): Promise<string | null> {
+    return d.host.busy(t("gal.busy.version", { base: item.stem }), async (): Promise<string | null> => {
+      try {
+        if (item.identifier === d.host.activeIdentifier()) await d.doc.exit();
+        const got = await atRestBytes(item);
+        if (got.why === "sealed-no-local") { d.host.status(t("gal.st.sealedNoLocal"), true); return null; }
+        if (!got.bytes) { d.host.status(t("gal.st.copyNoBytes"), true); return null; }
+        const originStem = parseVersionStem(item.stem)?.base ?? item.stem;                       // 给一版再存一版 = 还是那份原作的版本
+        const previous = versionsOf({ ...item, stem: originStem, identifier: "\u0000" }, siblings)[0] ?? null;   // 现有的最新一版（存之前认好）
+        const taken = new Set(siblings.map((s) => s.identifier));
+        const day = dayStamp(opts.now);
+        let target = "";
+        for (let attempt = 0; ; attempt++) {
+          target = versionTargetName(item.identifier, day, (n) => taken.has(n), ids());
+          try { await docFile(target, "new").save(got.bytes, { tryPush: cloudOn(), bornLocked: true }); break; }
+          catch (e: unknown) {   // 名字在列表之外被占了（云端有、这一夹的帧还没到）：库的 mode:"new" 不覆盖同名 → 换下一个序号再试
+            if ((e as { name?: unknown } | null)?.name !== "CloudNameCollisionError" || attempt >= 8) throw e;
+            taken.add(target);
+          }
+        }
+        const name = stemOf(target);
+        if (mode === "new" || !previous) { d.host.status(t("gal.st.versionSaved", { name })); return target; }
+        try {
+          const r = await docFile(previous.identifier).trash();
+          if (r.status === "cancelled" || r.status === "noop") d.host.status(t("gal.st.versionReplaceKept", { name, e: r.status }), true);
+          else d.host.status(t("gal.st.versionReplaced", { name }));
+        } catch (e: unknown) { d.host.status(isStarredError(e) ? t("gal.st.versionReplaceStarred", { name }) : t("gal.st.versionReplaceKept", { name, e: errMsg(e) }), true); }
+        return target;
+      } catch (e: unknown) { d.host.status(t("gal.st.versionFail", { e: errMsg(e) }), true); return null; }
+    });
+  }
+  /** 「存一版再改」：先存一版，成了才解锁（没存成 = 不解，免得人以为留了底其实没有）。 */
+  async function saveVersionThenUnlock(item: GItem, siblings: readonly GItem[], opts: { now?: Date } = {}): Promise<boolean> {
+    if (!(await saveVersion(item, "new", siblings, opts))) return false;
+    return unlockEdit(item);
+  }
+
   async function unlock(name: string): Promise<boolean> {
     const ok = !!(await d.encryption?.ensureUnlocked(name));
     if (ok) d.host.status(t("gal.st.unlocked"));
     return ok;
   }
 
-  return { rename, move, moveTargets, copy, resolve, unload, keepOffline, del, deleteImage, folderDelete, asideRestore, asidePurge, emptyAside, encryptItem, decryptItem, unlock, whereLabel };
+  return { rename, move, moveTargets, copy, resolve, unload, keepOffline, del, deleteImage, folderDelete, asideRestore, asidePurge, emptyAside, encryptItem, decryptItem, unlock, whereLabel,
+    unlockEdit, lockEdit, saveVersion, saveVersionThenUnlock,   // 0.9.0 锁 / 存一版（unlock = 加密的那把锁，老名字不动；这把叫 unlockEdit）
+    star: (item: GItem) => setMark(item, "star"), unstar: (item: GItem) => setMark(item, "unstar"), fold: (item: GItem) => setMark(item, "fold"), unfold: (item: GItem) => setMark(item, "unfold") };
 }
 export type GalleryVerbs = ReturnType<typeof createGalleryVerbs>;

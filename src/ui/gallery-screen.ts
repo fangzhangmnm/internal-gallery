@@ -11,6 +11,8 @@ import { imageThumbToken, imageTwinIdentifier, mimeForImageName } from "../core/
 import { createEncryptionState, encVersionOf, encryptionMenu, admitThumbBlob, dropPlainByproducts, type EncFacts } from "../core/model/encryption-state.ts";
 import { createSealedCover, type CoverShown } from "../core/model/sealed-cover.ts";
 import type { TimelineEntry } from "../core/model/timeline-order.ts";
+import { foldTimeline, foldedCount, versionsKey } from "../core/model/fold-groups.ts";
+import { parseVersionStem } from "../core/model/versions.ts";
 import { createFrameGate } from "../core/guards/frame-gate.ts";
 import { createFirstFrameWatchdog } from "../core/guards/first-frame-watchdog.ts";
 import { note as diagNote } from "../core/guards/diag-log.ts";
@@ -141,6 +143,21 @@ export interface GalleryHandle {
   setAttentionOnly(on: boolean): void;
   /** 0.8.8：当前夹里要处理的份数（和顶部横幅同一个数；只算列过的这一夹）。 */
   getAttentionCount(): number;
+  // ── 0.9.0：星 / 收起的筛选，和给宿主编辑器里那扇「门」用的四个动作（都按身份；只在人点了钮之后调）──
+  /** 只看加了星的。 */
+  setStarredOnly(on: boolean): void;
+  /** 当前夹里加了星的份数。 */
+  getStarredCount(): number;
+  /** 全部展开 / 收回（收起的细条和各版；屏幕上的临时状态，不落盘）。 */
+  setExpandAll(on: boolean): void;
+  /** 「接着改」：解锁这份作品。成 → true。 */
+  unlockEdit(identifier: string): Promise<boolean>;
+  /** 「存一版再改」：先存一版，成了才解锁。成 → true。 */
+  saveVersionThenUnlock(identifier: string): Promise<boolean>;
+  /** 存一版（"new"）/ 存到上一版（"replace-last"）。存成 → 新那一版的身份；没成 → null。 */
+  saveVersion(identifier: string, mode: "new" | "replace-last"): Promise<string | null>;
+  /** 提前锁上。 */
+  lockEdit(identifier: string): Promise<void>;
   /** 0.3.0：布局即时切换（用户偏好记不记住归宿主）。 */
   setLayout(l: "cards" | "list"): void;
   getLayout(): "cards" | "list";
@@ -152,6 +169,8 @@ interface GalleryVM {
   emptyAside(kind: AsideKind, scope?: AsideScope): void; requestUnlock(): Promise<boolean>; invalidateEncrypted(name: string): void;
   layout: "cards" | "list"; setLayout(l: "cards" | "list"): void;
   attentionOnly: boolean; setAttentionOnly(on: boolean): void; attentionCount: number;
+  setStarredOnly(on: boolean): void; starredCount: number; setExpandAll(on: boolean): void;
+  unlockEditById(id: string): Promise<boolean>; versionThenUnlockById(id: string): Promise<boolean>; saveVersionById(id: string, mode: "new" | "replace-last"): Promise<string | null>; lockEditById(id: string): Promise<void>;
 }
 const PIXELATED_THUMB_MAX_EDGE = 128;
 function thumbLoadPixelated(e: Event): boolean {
@@ -181,6 +200,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
     float: icon("cloud-upload"), folder: icon("folder"), cloudBig: icon("cloud"),
     ghost: icon("cloud-unavailable"), pendingGone: icon("cloud-pending"), newerOnCloud: icon("cloud-download"), conflictBoth: icon("cloud-conflict"),
     lock: icon("lock"), image: icon("image"), file: icon("file"),
+    star: icon("star"), pencil: icon("pencil"), fold: icon("archive-box"),   // 0.9.0：星 / 解着锁可以改 / 收起的细条
   };
   const enc = d.encryption;
   const _lockState = reactive({ unlocked: enc?.isUnlocked() ?? true });
@@ -350,7 +370,20 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       function retry(): void { diagNote("gallery", `retry view=${view.value} folder="${folder.value}"`); stalled.value = null; _framedFolder = null; void reload(); }
       function openDiag(): void { diagNote("gallery", "open diag log from stalled grid"); d.openDiag?.(); }
       function reloadApp(): void { diagNote("gallery", `reload from stalled grid folder="${folder.value}"`); if (d.reloadApp) d.reloadApp(); else location.reload(); }
+      // 0.9.0：这个库有没有锁 / 记号（store ≥ 2.3.0 的两个开关；老版本的库 = 都没有，界面上不出现任何相关的东西）+ 这台设备上活着的解锁。
+      //   库会换（多库切换）：每次订阅都对一下，换了库就重订。
+      const caps = reactive({ lock: false, marks: false });
+      const _unlocked = reactive(new Set<string>());
+      let _capStore: unknown = undefined, _unlockUnsub: (() => void) | null = null;
+      function syncCaps(): void {
+        const st = d.store();
+        if (st === _capStore) return;
+        _capStore = st; _unlockUnsub?.(); _unlockUnsub = null; _unlocked.clear();
+        caps.lock = st?.files.lockByDefault === true; caps.marks = st?.files.fileMarks === true;
+        if (caps.lock && st?.files.watchUnlocks) _unlockUnsub = st.files.watchUnlocks((live) => { _unlocked.clear(); for (const u of live) _unlocked.add(u.identifier); });
+      }
       function subscribe() {
+        syncCaps();
         _unsub?.(); _unsub = null;
         if (view.value !== "files") return;
         if (!d.store()) { data.files = []; data.images = []; data.others = []; data.folderNames = []; data.timeline = []; loading.value = false; wd.cancel(); stalled.value = null; return; }   // 无库：不订阅、空网格
@@ -422,6 +455,7 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       subscribe();
       onUnmounted(() => {
         _unsub?.(); _unsub = null; wd.cancel(); gate.reset();
+        _unlockUnsub?.(); _unlockUnsub = null;
         document.removeEventListener("pointerdown", _onGatePtrDown, true);
         document.removeEventListener("pointerup", _onGatePtrUp, true);
         document.removeEventListener("pointercancel", _onGatePtrUp, true);
@@ -431,21 +465,34 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       // 0.8.8：要处理的卡片，宿主没放钮的话库自己放一粒可见的「处理…」（user 2026-10-26「处理的东西应该图库上多一个按钮图示……只有非常小的云图标提示……在...里面」）
       const attentionAction = (tile: GalleryTile): TileAction | null => tile.attention ? { icon: "cloud-pending", title: t("gal.resolve"), state: "ready", verb: "resolve" } : null;
       // 0.8.11：t.encrypted = 加密态（本地字节 ∨ store 的事实）→ 锁、不显示明文封面、不取 / 不给事实；encLocal = 只看本地字节（本地解密封面那条路、「解除加密…」）。
+      // 0.9.0：每份原作现在有几版（一趟扫完；「存到上一版」给不给看它）
+      const versionCounts = computed(() => { const m = new Map<string, number>(); for (const it of data.files) { const v = parseVersionStem(it.stem); if (v) { const k = `${it.kind}\u0000${v.base}`; m.set(k, (m.get(k) ?? 0) + 1); } } return m; });
       const fileTiles = computed(() => data.files.map((it) => {
-        const encV = encVersionOf(it), encrypted = encState.isEncrypted(it.identifier, encV), encLocal = encState.isLocalEncrypted(it.identifier, encV);
-        const tile = tileFor(it, { signedIn: d.host.signedIn(), activeIdentifier: d.host.activeIdentifier(), encrypted });
+        const encV = encVersionOf(it), encrypted = encState.isEncrypted(it.identifier, encV, it.cloudSealed === true), encLocal = encState.isLocalEncrypted(it.identifier, encV);
+        const tile = tileFor(it, { signedIn: d.host.signedIn(), activeIdentifier: d.host.activeIdentifier(), encrypted, lockable: caps.lock, unlocked: _unlocked.has(it.identifier) });
+        const asVersion = parseVersionStem(it.stem);
         const info = fileInfo(it), facts = encrypted ? null : factsOf(it.identifier);   // 加密件的事实是明文时代留下的 → 不给宿主画
         const encMenu = encryptionMenu({ hasEncryption: !!enc, hasLocal: tile.hasLocal, encrypted, localEncrypted: encLocal });
-        return { key: it.identifier, ft: null, item: it, t: tile, encV, encLocal, encMenu, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.identifier, info, facts), thumb: hasThumb(it.kind), info, facts, act: actionOf(it.identifier, info, facts) ?? attentionAction(tile) };
+        return { key: it.identifier, ft: null, strip: null, dim: false, nVersions: 0, versionsOpen: false, vKey: versionsKey(it.identifier),   // 后五个 = 收起那一层的显示状态（timelineRows 里按行覆盖）
+          isVersion: asVersion != null, hasPrevVersion: (versionCounts.value.get(`${it.kind}\u0000${asVersion?.base ?? it.stem}`) ?? 0) > 0,
+          item: it, t: tile, encV, encLocal, encMenu, sub: subtitleOf(it), marker: markerOf(it), ov: ovHtml(it.identifier, info, facts), thumb: hasThumb(it.kind), info, facts, act: actionOf(it.identifier, info, facts) ?? attentionAction(tile) };
       }));
       // 0.8.12：作品和文件夹合成一列（顺序 = 数据面给的 timeline，规则只在 core/model/timeline-order.ts）；文件夹不再单独钉在最上面。
       //   一行要么是文件夹（ft 有值），要么是作品（ft = null，其余字段同上）；模板按 ft 分叉。
+      // 0.9.0 收起（core/model/fold-groups.ts）：存下来的各版收在原作那一格底下（+N）、手动收起的挨着合成一条细条；点开原地摊开——屏幕上的临时状态，不落盘。
+      //   一行多一种：细条（strip 有值）。
+      const expanded = reactive(new Set<string>());
+      const expandAll = ref(false);
+      const toggleFold = (key: string): void => { if (expanded.has(key)) expanded.delete(key); else expanded.add(key); };
+      const foldedN = computed(() => foldedCount(data.timeline));
       const timelineRows = computed(() => {
         const byId = new Map(fileTiles.value.map((r) => [r.t.identifier, r] as const));
-        const rows: ({ key: string; ft: { name: string; path: string } } | (typeof fileTiles.value)[number])[] = [];
-        for (const e of data.timeline) {
-          if (e.type === "folder") { const path = pathJoin(folder.value, e.name); rows.push({ key: "F:" + path, ft: { name: e.name, path } }); }
-          else { const r = byId.get(e.item.identifier); if (r) rows.push(r); }
+        type FileRow = (typeof fileTiles.value)[number];
+        const rows: ({ key: string; ft: { name: string; path: string }; strip: null } | { key: string; ft: null; strip: { open: boolean; label: string } } | FileRow)[] = [];
+        for (const e of foldTimeline(data.timeline, { isOpen: (k) => expanded.has(k), expandAll: expandAll.value })) {
+          if (e.type === "folder") { const path = pathJoin(folder.value, e.name); rows.push({ key: "F:" + path, ft: { name: e.name, path }, strip: null }); }
+          else if (e.type === "strip") rows.push({ key: e.key, ft: null, strip: { open: e.open, label: t(e.open ? "gal.fold.stripOpen" : "gal.fold.strip", { n: e.count }) } });
+          else { const r = byId.get(e.item.identifier); if (r) rows.push({ ...r, dim: e.dim, nVersions: e.versions.length, versionsOpen: e.versionsOpen }); }
         }
         return rows;
       });
@@ -453,7 +500,12 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const attentionWanted = ref(false);   // 宿主 / 用户要的；帧还没到时也能先记下（setAttentionOnly(true) 紧跟 open()）
       const attentionCount = computed(() => fileTiles.value.reduce((n, r) => n + (r.t.attention ? 1 : 0), 0));
       const attentionOnly = computed(() => attentionWanted.value && attentionCount.value > 0);   // 没有要处理的 = 当没开（绝不留一个空格子）
-      const shownTimeline = computed(() => attentionOnly.value ? fileTiles.value.filter((r) => r.t.attention) : timelineRows.value);   // 只看要处理的 = 只有那几份作品，文件夹不画
+      // 0.9.0：只看加了星的（平铺，不折叠；没有加星的 = 当没开）
+      const starredWanted = ref(false);
+      const starredCount = computed(() => fileTiles.value.reduce((n, r) => n + (r.t.starred ? 1 : 0), 0));
+      const starredOnly = computed(() => starredWanted.value && starredCount.value > 0);
+      const shownTimeline = computed(() => attentionOnly.value ? fileTiles.value.filter((r) => r.t.attention)   // 只看要处理的 = 只有那几份作品，文件夹不画
+        : starredOnly.value ? fileTiles.value.filter((r) => r.t.starred) : timelineRows.value);
       const attentionText = computed(() => t(attentionOnly.value ? "gal.attention.showing" : "gal.attention.banner", { n: attentionCount.value }));
       let _prevAttention = 0;
       watch(() => attentionCount.value, () => { const n = attentionCount.value; if (n === 0 && _prevAttention > 0) attentionWanted.value = false; _prevAttention = n; });   // 都处理完了 → 回全部
@@ -523,6 +575,19 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
       const encryptItem = wrap((item: GItem) => verbs.encryptItem(item));
       const decryptItem = wrap((item: GItem) => verbs.decryptItem(item));
       async function onUnlock(name: string) { if (await verbs.unlock(name)) await reload(); }
+      // 0.9.0 锁 / 星 / 收起 / 存一版：都是人点了菜单才走到这里。不 reload——库自己会给这一夹重画一帧（存了新文件 / 记号变了），解锁走 watchUnlocks；重订一次 = 白白重列一遍云端。
+      const act = <A extends unknown[]>(fn: (...a: A) => Promise<unknown>) => async (...a: A) => { closeMenu(); await fn(...a); };
+      const unlockAndOpen = act(async (item: GItem) => { if (await verbs.unlockEdit(item)) await openTile(item); });                        // 「接着改」= 解锁并打开
+      const versionThenEdit = act(async (item: GItem) => { if (await verbs.saveVersionThenUnlock(item, data.files)) await openTile(item); });   // 「存一版再改」
+      const lockEdit = act((item: GItem) => verbs.lockEdit(item));
+      const saveVersion = act((item: GItem) => verbs.saveVersion(item, "new", data.files));
+      const saveVersionReplace = act((item: GItem) => verbs.saveVersion(item, "replace-last", data.files));
+      const star = act((item: GItem) => verbs.star(item)), unstar = act((item: GItem) => verbs.unstar(item));
+      const fold = act((item: GItem) => verbs.fold(item)), unfold = act((item: GItem) => verbs.unfold(item));
+      // 宿主编辑器里那扇门按身份叫进来：在当前夹里就用这一夹的条目，不在就按身份现拼一条（同夹的兄弟只认得当前夹里的）。
+      const itemOf = (identifier: string): GItem => data.files.find((it) => it.identifier === identifier)
+        ?? (() => { const p = d.store()?.identifiers.parse(identifier); return { identifier, stem: p?.stem ?? identifier, kind: p?.kind ?? "", syncState: "synced" as const }; })();
+      const siblingsOf = (identifier: string): GItem[] => { const f = identifier.includes("/") ? identifier.slice(0, identifier.lastIndexOf("/")) : ""; return f === folder.value ? data.files : []; };
 
       /** 0.8.0：卡片上的动作钮（不打开那份）。0.8.8：库自己放的「处理…」走 verbs.resolve；宿主的钮照旧走 doc.tileAction。 */
       function tileAction(row: { item: GItem; act: TileAction | null }) {
@@ -566,7 +631,13 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         retry: t("gal.retry"), openDiag: t("gal.openDiag"), reload: t("gal.reload"),
         keepOffline: t("gal.keepOffline"), unread: t("gal.marker.unread"),
         attentionList: t("gal.attention.list"), attentionAll: t("gal.attention.all"),   // 0.8.8
+        editContinue: t("gal.editLock.continue"), editVersionThen: t("gal.editLock.versionThenEdit"), editLock: t("gal.editLock.lock"), unlockedMark: t("gal.editLock.unlockedMark"),   // 0.9.0
+        saveVersion: t("gal.saveVersion"), saveVersionReplace: t("gal.saveVersionReplace"), star: t("gal.star"), unstar: t("gal.unstar"), starredMark: t("gal.starredMark"),
+        fold: t("gal.fold"), unfold: t("gal.unfold"), expandAll: t("gal.fold.expandAll"), collapseAll: t("gal.fold.collapseAll"), starOnly: t("gal.star.only"), starAll: t("gal.star.all"),
       };
+      const versionsTitle = (n: number): string => t("gal.fold.versions", { n });
+      const starBarText = computed(() => t("gal.star.bar", { n: starredCount.value }));
+      const foldBarText = computed(() => t("gal.fold.bar", { n: foldedN.value }));
       const tileAspect = typeof d.tile?.aspect === "number" && Number.isFinite(d.tile.aspect) && d.tile.aspect > 0 ? d.tile.aspect : null;   // null = 默认方图（样式表里的 1 / 1）
       const tileTall = tileAspect != null && tileAspect < 1;
       const tileStyle = tileAspect != null ? { "--tile-aspect": String(tileAspect) } : null;
@@ -575,6 +646,12 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
         view, folder, loading, stalled, retry, openDiag, reloadApp, openMenu, isEmpty, emptyText, L, phHtml,
         folderTiles, fileTiles, shownTimeline, imageTiles, otherTiles, asideTiles, crumbs, badgeIcon2,
         attentionOnly, attentionCount, attentionText, setAttentionOnly, toggleAttentionOnly: () => setAttentionOnly(!attentionWanted.value),   // 0.8.8
+        caps, toggleFold, expandAll, foldedN, foldBarText, starBarText, versionsTitle, toggleExpandAll: () => { expandAll.value = !expandAll.value; if (!expandAll.value) expanded.clear(); },   // 0.9.0
+        setExpandAll: (on: boolean) => { expandAll.value = on; if (!on) expanded.clear(); },
+        starredOnly, starredCount, setStarredOnly: (on: boolean) => { starredWanted.value = on; }, toggleStarredOnly: () => { starredWanted.value = !starredOnly.value; },
+        unlockAndOpen, versionThenEdit, lockEdit, saveVersion, saveVersionReplace, star, unstar, fold, unfold,
+        unlockEditById: (id: string) => verbs.unlockEdit(itemOf(id)), versionThenUnlockById: (id: string) => verbs.saveVersionThenUnlock(itemOf(id), siblingsOf(id)),
+        saveVersionById: (id: string, mode: "new" | "replace-last") => verbs.saveVersion(itemOf(id), mode, siblingsOf(id)), lockEditById: (id: string) => verbs.lockEdit(itemOf(id)),
         badgeIcon, fmtMeta, humanTime, fullTime, ICON, toggleMenu, menuMount: el, invalidateEncrypted, setFolder, hydrateFolder, enterFolder,
         openTile, tileAction, openImageTile, deleteImage, rename, move, copy, resolve, unload, keepOffline, del, folderDelete, asideRestore, asidePurge, emptyAside,
         encryptItem, decryptItem, onUnlock, requestUnlock, hasEncryption: !!enc, notePeekSealed,
@@ -590,6 +667,8 @@ export function mountGalleryScreen(el: HTMLElement, d: GalleryScreenDeps): Galle
     refresh: () => vm.reload(), setView: (v) => vm.setView(v), getView: () => vm.view,
     setLayout: (l) => vm.setLayout(l), getLayout: () => vm.layout,
     setAttentionOnly: (on) => vm.setAttentionOnly(on), getAttentionCount: () => vm.attentionCount,   // 0.8.8
+    setStarredOnly: (on) => vm.setStarredOnly(on), getStarredCount: () => vm.starredCount, setExpandAll: (on) => vm.setExpandAll(on),   // 0.9.0
+    unlockEdit: (id) => vm.unlockEditById(id), saveVersionThenUnlock: (id) => vm.versionThenUnlockById(id), saveVersion: (id, mode) => vm.saveVersionById(id, mode), lockEdit: (id) => vm.lockEditById(id),
     setFolder: (p) => vm.setFolder(p), hydrateFolder: (p) => vm.hydrateFolder(p), getFolder: () => vm.folder,
     emptyTrash: (scope) => vm.emptyAside("trash", scope), emptyBackup: (scope) => vm.emptyAside("backup", scope), requestUnlock: () => vm.requestUnlock(), invalidateEncrypted: (name) => vm.invalidateEncrypted(name),
     unmount: () => app.unmount(),

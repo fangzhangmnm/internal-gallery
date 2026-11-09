@@ -19,7 +19,11 @@ import type { AsideItem } from "./aside.ts";
  *  **唯一状态源 = syncState（store 9 态）**；徽章 / 菜单 / 缩略图来源全从它算，本包不再派生 local/cloud/dirty/ghost… 一堆布尔
  *  （那正是 store Item 注释警告的「下游重推导越狱」形状）。size / lastModified 是数据不是状态。
  *  0.6.0：identifier = 身份（原 name，裸名时代的产物退役）；stem / kind 来自 store.identifiers.parse——图库里只有文档（parse 得出的）才是 GItem。 */
-export interface GItem { identifier: string; stem: string; kind: string; syncState: SyncState; size?: number; lastModified?: number }
+export interface GItem { identifier: string; stem: string; kind: string; syncState: SyncState; size?: number; lastModified?: number;
+  /** 0.9.0（store ≥ 2.3.0 开了 fileMarks 才有，原样透传）：加了星（库拒绝送进回收站）/ 手动收起（纯显示）。只在 true 时有。 */
+  starred?: true; folded?: true;
+  /** 0.9.0（store ≥ 2.2.6，原样透传）：云端那份是加密容器——加密态的第三路（纯云端、这台没字节也知道它加密）。 */
+  cloudSealed?: true }
 
 // 读状态的三个谓词——全包唯一允许「看 syncState 分支」的地方（模板 / verbs 只准用它们，不准再写 `s === "…"`）。
 /** 本地有字节副本（store isCached：synced / unpushed / newer-on-cloud / conflict / ghost / pendingGone / float / local-only）。 */
@@ -55,6 +59,13 @@ export interface GalleryTile {
   /** 0.8.8：这份**没同步好、要人处理**（登录态下 float / dirtyBoth / conflictBoth / ghost / pendingGone）——卡片上给可见的「处理…」钮、顶部横幅计数。
    *  localOnly（干净、从没传过）不算：store `resolve()` 对它回 clean、没有可做的事；newerOnCloud 也不算：打开就自动快进。 */
   attention: boolean;
+  /** 0.9.0：加了星 / 手动收起（GItem 原样）。 */
+  starred: boolean;
+  folded: boolean;
+  /** 0.9.0 锁（store 开了 lockByDefault 才有意义）：lockable = 这个库的作品默认只读；unlocked = 这台设备现在有一枚活着的解锁。
+   *  锁着是常态，卡片上不画大锁；解着的给一个小记号。lockable 为假（没开开关 / 老版本的库）= 两个都是 false、界面上没有任何锁的东西。 */
+  lockable: boolean;
+  unlocked: boolean;
 }
 /** 0.8.8：哪些徽章算「要人处理」（和 store `resolve()` 真能做事的集合一致）。 */
 export const ATTENTION_BADGES: ReadonlySet<BadgeKind> = new Set<BadgeKind>(["float", "dirtyBoth", "conflictBoth", "ghost", "pendingGone"]);
@@ -66,7 +77,7 @@ const BADGE_OF: Record<SyncState, BadgeKind> = {
 };
 export function tileFor(
   item: GItem,
-  opts: { signedIn: boolean; activeIdentifier: string | null; encrypted?: boolean },
+  opts: { signedIn: boolean; activeIdentifier: string | null; encrypted?: boolean; lockable?: boolean; unlocked?: boolean },
 ): GalleryTile {
   const s = item.syncState;
   const badge = BADGE_OF[s] ?? "localOnly";
@@ -86,6 +97,8 @@ export function tileFor(
     // 加密态由调用方判定后注入（store 的 Item 内容盲、没有 encrypted 轴；判定 = 本地字节 ∨ store 的事实，见 encryption-state.ts）。
     encrypted: !!opts.encrypted,
     attention: opts.signedIn && ATTENTION_BADGES.has(badge),
+    starred: item.starred === true, folded: item.folded === true,
+    lockable: !!opts.lockable, unlocked: !!opts.lockable && !!opts.unlocked,
   };
 }
 

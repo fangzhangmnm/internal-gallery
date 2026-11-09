@@ -41,6 +41,11 @@ export function galleryItemFromStoreItem(it: Item, ids: Identifiers): GItem | nu
   const g: GItem = { identifier: it.identifier, stem: d.stem, kind: d.kind, syncState: it.syncState };
   if (it.size != null) g.size = it.size;
   if (it.lastModified != null) g.lastModified = it.lastModified;
+  // 0.9.0：库填好的三个事实原样带上（store 2.3.0 的星 / 收起、2.2.6 的 cloudSealed）；老版本的库没有这些字段 = 不带。
+  const f = it as { starred?: unknown; folded?: unknown; cloudSealed?: unknown };
+  if (f.starred === true) g.starred = true;
+  if (f.folded === true) g.folded = true;
+  if (f.cloudSealed === true) g.cloudSealed = true;
   return g;
 }
 

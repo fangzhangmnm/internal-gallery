@@ -514,6 +514,18 @@ export function createGalleryVerbs(d: VerbDeps): {
     decryptItem: (item: GItem) => Promise<void>;
     unlock: (name: string) => Promise<boolean>;
     whereLabel: (where: "local" | "cloud") => string;
+    unlockEdit: (item: GItem) => Promise<boolean>;
+    lockEdit: (item: GItem) => Promise<void>;
+    saveVersion: (item: GItem, mode: "new" | "replace-last", siblings: readonly GItem[], opts?: {
+        now?: Date;
+    }) => Promise<string | null>;
+    saveVersionThenUnlock: (item: GItem, siblings: readonly GItem[], opts?: {
+        now?: Date;
+    }) => Promise<boolean>;
+    star: (item: GItem) => Promise<void>;
+    unstar: (item: GItem) => Promise<void>;
+    fold: (item: GItem) => Promise<void>;
+    unfold: (item: GItem) => Promise<void>;
 };
 
 // @public
@@ -561,6 +573,9 @@ export interface DataFaceStore {
     // (undocumented)
     identifiers: Identifiers;
 }
+
+// @public
+export function dayStamp(now?: Date): string;
 
 // @public
 export const defaultT: GalleryT;
@@ -716,6 +731,9 @@ export function flattenWhiteInPlace(rgba: Uint8ClampedArray): Uint8ClampedArray;
 function flush(): void;
 
 // @public
+export function foldedCount(timeline: readonly TimelineEntry[]): number;
+
+// @public
 export interface FolderProbe {
     // (undocumented)
     authoritative: boolean;
@@ -726,6 +744,34 @@ export interface FolderProbe {
     // (undocumented)
     folders: string[];
 }
+
+// @public (undocumented)
+export type FoldRow = {
+    type: "folder";
+    name: string;
+}
+/** 一格作品。versions = 收在它底下的各版（新的在前）；versionsOpen = 它们现在摊开着（紧跟在后面的几行就是）；dim = 这一格是摊开出来的（收起项 / 版本）。 */
+| {
+    type: "doc";
+    item: GItem;
+    versions: GItem[];
+    versionsOpen: boolean;
+    dim: boolean;
+    versionOf: string | null;
+}
+/** 一条细条：这里收起了 count 份。open = 现在摊开着（紧跟在后面的 count 行就是）。key = 展开状态用的键。 */
+| {
+    type: "strip";
+    key: string;
+    count: number;
+    open: boolean;
+};
+
+// @public (undocumented)
+export function foldTimeline(timeline: readonly TimelineEntry[], o: {
+    isOpen: (key: string) => boolean;
+    expandAll?: boolean;
+}): FoldRow[];
 
 // @public (undocumented)
 export interface FrameGate<T> {
@@ -1386,6 +1432,191 @@ export const GALLERY_TEXT: {
         readonly zh: "处理…";
         readonly en: "Resolve…";
         readonly ja: "処理…";
+    };
+    readonly "gal.editLock.continue": {
+        readonly zh: "解锁：接着改";
+        readonly en: "Unlock & keep editing";
+        readonly ja: "ロック解除して編集を続ける";
+    };
+    readonly "gal.editLock.versionThenEdit": {
+        readonly zh: "解锁：存一版再改";
+        readonly en: "Unlock: save a version first";
+        readonly ja: "ロック解除：先に版を保存";
+    };
+    readonly "gal.editLock.lock": {
+        readonly zh: "锁上（先不改了）";
+        readonly en: "Lock (done editing for now)";
+        readonly ja: "ロックする（編集を終える）";
+    };
+    readonly "gal.editLock.unlockedMark": {
+        readonly zh: "解着锁，可以改（放着一天不动会自己锁上）";
+        readonly en: "Unlocked for editing (locks itself after a day untouched)";
+        readonly ja: "編集ロック解除中（1 日触らなければ自動でロック）";
+    };
+    readonly "gal.saveVersion": {
+        readonly zh: "存一版";
+        readonly en: "Save a version";
+        readonly ja: "版を保存";
+    };
+    readonly "gal.saveVersionReplace": {
+        readonly zh: "存到上一版（替换上一份）";
+        readonly en: "Save over the last version";
+        readonly ja: "前の版に上書き保存";
+    };
+    readonly "gal.star": {
+        readonly zh: "加星（防误删）";
+        readonly en: "Star (protect from deletion)";
+        readonly ja: "スターを付ける（誤削除防止）";
+    };
+    readonly "gal.unstar": {
+        readonly zh: "撤星";
+        readonly en: "Remove star";
+        readonly ja: "スターを外す";
+    };
+    readonly "gal.starredMark": {
+        readonly zh: "加了星：送进回收站之前要先撤星";
+        readonly en: "Starred: remove the star before moving it to trash";
+        readonly ja: "スター付き：ゴミ箱に入れる前にスターを外してください";
+    };
+    readonly "gal.fold": {
+        readonly zh: "收起";
+        readonly en: "Tuck away";
+        readonly ja: "しまう";
+    };
+    readonly "gal.unfold": {
+        readonly zh: "取消收起";
+        readonly en: "Bring back";
+        readonly ja: "しまうのをやめる";
+    };
+    readonly "gal.fold.strip": {
+        readonly zh: "收起了 {n} 份";
+        readonly en: "{n} tucked away";
+        readonly ja: "{n} 件をしまっています";
+    };
+    readonly "gal.fold.stripOpen": {
+        readonly zh: "收起的 {n} 份（点一下收回）";
+        readonly en: "{n} tucked away (tap to hide)";
+        readonly ja: "しまった {n} 件（タップで閉じる）";
+    };
+    readonly "gal.fold.versions": {
+        readonly zh: "存下来的 {n} 版（点一下摊开 / 收回）";
+        readonly en: "{n} saved version(s) (tap to show / hide)";
+        readonly ja: "保存した {n} 版（タップで開閉）";
+    };
+    readonly "gal.fold.bar": {
+        readonly zh: "这一夹收起了 {n} 份";
+        readonly en: "{n} tucked away in this folder";
+        readonly ja: "このフォルダーで {n} 件をしまっています";
+    };
+    readonly "gal.fold.expandAll": {
+        readonly zh: "全部展开";
+        readonly en: "Show all";
+        readonly ja: "すべて開く";
+    };
+    readonly "gal.fold.collapseAll": {
+        readonly zh: "全部收回";
+        readonly en: "Hide again";
+        readonly ja: "すべて閉じる";
+    };
+    readonly "gal.star.bar": {
+        readonly zh: "加了星的 {n} 份";
+        readonly en: "{n} starred";
+        readonly ja: "スター付き {n} 件";
+    };
+    readonly "gal.star.only": {
+        readonly zh: "只看加星的";
+        readonly en: "Starred only";
+        readonly ja: "スター付きのみ";
+    };
+    readonly "gal.star.all": {
+        readonly zh: "看全部";
+        readonly en: "Show all";
+        readonly ja: "すべて表示";
+    };
+    readonly "gal.busy.version": {
+        readonly zh: "正在存一版 {base}…";
+        readonly en: "Saving a version of {base}…";
+        readonly ja: "{base} の版を保存中…";
+    };
+    readonly "gal.st.editUnlocked": {
+        readonly zh: "已解锁：{name}（放着一天不动会自己锁上）";
+        readonly en: "Unlocked: {name} (locks itself after a day untouched)";
+        readonly ja: "ロック解除：{name}（1 日触らなければ自動でロック）";
+    };
+    readonly "gal.st.editLocked": {
+        readonly zh: "已锁上：{name}";
+        readonly en: "Locked: {name}";
+        readonly ja: "ロックしました：{name}";
+    };
+    readonly "gal.st.editLockFail": {
+        readonly zh: "没改成：{e}";
+        readonly en: "Could not change the lock: {e}";
+        readonly ja: "変更できませんでした：{e}";
+    };
+    readonly "gal.st.versionSaved": {
+        readonly zh: "已存一版：{name}";
+        readonly en: "Version saved: {name}";
+        readonly ja: "版を保存しました：{name}";
+    };
+    readonly "gal.st.versionReplaced": {
+        readonly zh: "已存到上一版：{name}（旧的那份进了回收站）";
+        readonly en: "Saved over the last version: {name} (the old one is in the trash)";
+        readonly ja: "前の版に保存しました：{name}（古い版はゴミ箱へ）";
+    };
+    readonly "gal.st.versionReplaceKept": {
+        readonly zh: "已存一版：{name}；上一版没有替换掉（{e}），留着没动";
+        readonly en: "Version saved: {name}; the previous version was kept ({e})";
+        readonly ja: "版を保存しました：{name}。前の版は残してあります（{e}）";
+    };
+    readonly "gal.st.versionReplaceStarred": {
+        readonly zh: "已存一版：{name}；上一版加了星，留着没动";
+        readonly en: "Version saved: {name}; the previous version is starred and was kept";
+        readonly ja: "版を保存しました：{name}。前の版はスター付きのため残してあります";
+    };
+    readonly "gal.st.versionFail": {
+        readonly zh: "没存成：{e}";
+        readonly en: "Could not save a version: {e}";
+        readonly ja: "保存できませんでした：{e}";
+    };
+    readonly "gal.st.sealedNoLocal": {
+        readonly zh: "这份是加密的、这台设备上还没有它的字节：先留一份在本机，再复制 / 存一版（不解密、不落明文）";
+        readonly en: "This work is encrypted and not on this device yet: keep it offline first, then duplicate / save a version (nothing is decrypted to disk)";
+        readonly ja: "暗号化された作品で、この端末にまだありません。先にオフライン保存してから複製 / 版の保存をしてください（平文は保存しません）";
+    };
+    readonly "gal.st.starred": {
+        readonly zh: "已加星：{name}";
+        readonly en: "Starred: {name}";
+        readonly ja: "スターを付けました：{name}";
+    };
+    readonly "gal.st.unstarred": {
+        readonly zh: "已撤星：{name}";
+        readonly en: "Star removed: {name}";
+        readonly ja: "スターを外しました：{name}";
+    };
+    readonly "gal.st.folded": {
+        readonly zh: "已收起：{name}";
+        readonly en: "Tucked away: {name}";
+        readonly ja: "しまいました：{name}";
+    };
+    readonly "gal.st.unfolded": {
+        readonly zh: "已取消收起：{name}";
+        readonly en: "Brought back: {name}";
+        readonly ja: "しまうのをやめました：{name}";
+    };
+    readonly "gal.st.marksFail": {
+        readonly zh: "没改成：{e}";
+        readonly en: "Could not change it: {e}";
+        readonly ja: "変更できませんでした：{e}";
+    };
+    readonly "gal.st.starredNoDel": {
+        readonly zh: "「{name}」加了星：先撤星，才能送进回收站";
+        readonly en: "“{name}” is starred: remove the star before moving it to trash";
+        readonly ja: "「{name}」はスター付きです。先にスターを外してからゴミ箱に入れてください";
+    };
+    readonly "gal.st.resolve.starred": {
+        readonly zh: "「{name}」加了星，两边都没动：先撤星，才能选「云端覆盖本地」把这份送进回收站";
+        readonly en: "“{name}” is starred, nothing was changed: remove the star before choosing “Cloud overwrites local” (which moves this copy to trash)";
+        readonly ja: "「{name}」はスター付きのため何も変更していません。先にスターを外してください";
     };
     readonly "gal.attention.banner": {
         readonly zh: "有 {n} 份没同步好，要你处理";
@@ -2486,22 +2717,29 @@ export interface GalleryHandle {
     getFolder(): string;
     // (undocumented)
     getLayout(): "cards" | "list";
+    getStarredCount(): number;
     // (undocumented)
     getView(): GalleryView;
     // (undocumented)
     hydrateFolder(path: string): void;
     // (undocumented)
     invalidateEncrypted(name: string): void;
+    lockEdit(identifier: string): Promise<void>;
     // (undocumented)
     refresh(): void;
     // (undocumented)
     requestUnlock(): Promise<boolean>;
+    saveVersion(identifier: string, mode: "new" | "replace-last"): Promise<string | null>;
+    saveVersionThenUnlock(identifier: string): Promise<boolean>;
     setAttentionOnly(on: boolean): void;
+    setExpandAll(on: boolean): void;
     // (undocumented)
     setFolder(path: string): void;
     setLayout(l: "cards" | "list"): void;
+    setStarredOnly(on: boolean): void;
     // (undocumented)
     setView(v: GalleryView): void;
+    unlockEdit(identifier: string): Promise<boolean>;
     // (undocumented)
     unmount(): void;
 }
@@ -2664,6 +2902,8 @@ export interface GalleryTile {
     cloudNewer: boolean;
     encrypted: boolean;
     // (undocumented)
+    folded: boolean;
+    // (undocumented)
     ghost: boolean;
     // (undocumented)
     hasCloud: boolean;
@@ -2675,16 +2915,20 @@ export interface GalleryTile {
     isActive: boolean;
     // (undocumented)
     kind: string;
+    lockable: boolean;
     // (undocumented)
     pendingGone: boolean;
     // (undocumented)
     size: number;
+    starred: boolean;
     // (undocumented)
     stem: string;
     // (undocumented)
     syncState: SyncState;
     // (undocumented)
     time: number;
+    // (undocumented)
+    unlocked: boolean;
 }
 
 // @public (undocumented)
@@ -2695,6 +2939,9 @@ export type GalleryView = "files" | AsideKind;
 
 // @public
 export interface GItem {
+    cloudSealed?: true;
+    // (undocumented)
+    folded?: true;
     // (undocumented)
     identifier: string;
     // (undocumented)
@@ -2703,6 +2950,7 @@ export interface GItem {
     lastModified?: number;
     // (undocumented)
     size?: number;
+    starred?: true;
     // (undocumented)
     stem: string;
     // (undocumented)
@@ -2846,6 +3094,13 @@ export function openGalleryFlow(p: GalleryOpenPorts, screen: {
 
 // @public (undocumented)
 export const ORA_THUMB_PATH = "Thumbnails/thumbnail.png";
+
+// @public
+export function parseVersionStem(stem: string): {
+    base: string;
+    date: string;
+    n: number;
+} | null;
 
 // @public (undocumented)
 export function pathBasename(name: string): string;
@@ -3013,6 +3268,9 @@ export interface StoreUIDeps {
 // @public (undocumented)
 export function storeUIFor(d: StoreUIDeps): StoreUI;
 
+// @public
+export const stripKey: (firstIdentifier: string) => string;
+
 // @public (undocumented)
 export const SUFFIX_BYTES = 81920;
 
@@ -3155,6 +3413,8 @@ export function tileFor(item: GItem, opts: {
     signedIn: boolean;
     activeIdentifier: string | null;
     encrypted?: boolean;
+    lockable?: boolean;
+    unlocked?: boolean;
 }): GalleryTile;
 
 // @public
@@ -3264,7 +3524,8 @@ export interface VerbFile {
     }>;
     // (undocumented)
     save(bytes: Blob, opts: {
-        tryPush: boolean;
+        tryPush: boolean; /** 0.9.0（store 2.3.0）：新建的这份生来锁着（存下来的一版）。老版本的库忽略它。 */
+        bornLocked?: boolean;
     }): Promise<unknown>;
     trash(): Promise<{
         status: string;
@@ -3340,10 +3601,33 @@ export interface VerbStore {
         emptyBackup(o: {
             scope: AsideScope;
         }): Promise<AsideEmptyResult>;
+        lockByDefault?: boolean;
+        fileMarks?: boolean;
+        unlock?(identifier: string): Promise<unknown>;
+        lock?(identifier: string): Promise<void>;
+        watchUnlocks?(cb: (live: {
+            identifier: string;
+        }[]) => void): () => void;
+        star?(identifier: string): Promise<void>;
+        unstar?(identifier: string): Promise<void>;
+        fold?(identifier: string): Promise<void>;
+        unfold?(identifier: string): Promise<void>;
     };
     // (undocumented)
     identifiers: Identifiers;
 }
+
+// @public (undocumented)
+export const VERSION_MARK = ".backup-";
+
+// @public (undocumented)
+export const versionsKey: (originalIdentifier: string) => string;
+
+// @public
+export function versionsOf(original: GItem, siblings: readonly GItem[]): GItem[];
+
+// @public
+export function versionTargetName(source: string, day: string, taken: (identifier: string) => boolean, ids: Identifiers): string;
 
 // @public
 export interface VueRuntime {

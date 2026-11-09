@@ -34,6 +34,12 @@ export const GALLERY_TEMPLATE = `
         <button type="button" class="gallery-attention-toggle" @click="toggleAttentionOnly">{{ attentionOnly ? L.attentionAll : L.attentionList }}</button>
       </div>
 
+      <!-- 0.9.0：这一夹有加了星的 / 收起的 → 顶上一条：只看加星的、全部展开。复用面包屑容器样式，宿主零 CSS。 -->
+      <div class="gallery-breadcrumb gallery-marks-bar" v-if="view==='files' && !loading && !attentionOnly && (starredCount>0 || foldedN>0)">
+        <template v-if="starredCount>0"><span class="gallery-marks-text">{{ starBarText }}</span><button type="button" class="gallery-marks-toggle" @click="toggleStarredOnly">{{ starredOnly ? L.starAll : L.starOnly }}</button></template>
+        <template v-if="foldedN>0 && !starredOnly"><span class="gallery-marks-text">{{ foldBarText }}</span><button type="button" class="gallery-marks-toggle" @click="toggleExpandAll">{{ expandAll ? L.collapseAll : L.expandAll }}</button></template>
+      </div>
+
       <!-- 0.8.6：回收站 / 备份箱视图顶上一条动作（store files.emptyTrash / emptyBackup 一直有、图库从没给过入口——store README「暂无 gallery UI」）。复用面包屑的容器与按钮样式，宿主零 CSS。 -->
       <div class="gallery-breadcrumb gallery-aside-bar" v-if="view!=='files' && !loading && !isEmpty">
         <button type="button" class="danger" @click="emptyAside(view)">{{ view==='trash' ? L.emptyTrash : L.emptyBackup }}</button>
@@ -67,17 +73,23 @@ export const GALLERY_TEMPLATE = `
             </div></Teleport>
           </div>
 
-          <div v-else class="gallery-tile" :class="{ active: row.t.isActive, encrypted: row.t.encrypted, attention: row.t.attention }" @click="openTile(row.item)">
+          <!-- 0.9.0 收起的细条：就在它们原来的时间线位置；点一下原地摊开、再点收回（摊开不等于取消收起） -->
+          <button v-else-if="row.strip" type="button" class="gallery-fold-strip" :class="{ open: row.strip.open }" @click="toggleFold(row.key)"><span class="gallery-fold-strip-ico" v-html="ICON.fold"></span><span>{{ row.strip.label }}</span></button>
+
+          <div v-else class="gallery-tile" :class="{ active: row.t.isActive, encrypted: row.t.encrypted, attention: row.t.attention, starred: row.t.starred, dim: row.dim }" @click="openTile(row.item)">
             <ThumbCell :enc-name="row.encLocal && row.thumb ? row.t.identifier : null" :fetchable="!row.encLocal && (row.t.hasCloud || row.t.hasLocal) && row.thumb" :sealed="row.t.encrypted" :is-cloud="!row.t.hasLocal && row.t.hasCloud" :cloud-newer="row.t.cloudNewer" :thumb-token="String(row.t.time || row.t.size || 0)" :fallback="row.t.stem.slice(0,1) || '?'" :fallback-html="phHtml(row.t.identifier, row.info)" :alt="row.t.identifier" @unlock="onUnlock" @sealed="notePeekSealed(row.item)" />
             <span v-if="row.ov" class="gallery-tile-overlay" v-html="row.ov"></span>
             <span v-if="row.act" class="gallery-tile-action-slot"><button type="button" class="gallery-tile-action" :class="[row.act.state || 'ready', row.act.verb ? 'verb-' + row.act.verb : '']" :title="row.act.title" :aria-label="row.act.title" @click.stop="tileAction(row)" @pointerdown.stop><span class="gallery-tile-action-ico" v-html="badgeIcon2(row.act.icon)"></span><span v-if="row.act.verb" class="gallery-tile-action-label">{{ row.act.title }}</span></button></span>
             <span v-if="row.t.encrypted" class="gallery-tile-lockmark" :title="L.encrypted" v-html="ICON.lock"></span>
+            <!-- 0.9.0：这份原作存下来的各版收在它底下；点「+N」原地摊开 / 收回 -->
+            <span v-if="row.nVersions" class="gallery-tile-versions-slot"><button type="button" class="gallery-tile-versions" :class="{ open: row.versionsOpen }" :title="versionsTitle(row.nVersions)" :aria-label="versionsTitle(row.nVersions)" @click.stop="toggleFold(row.vKey)" @pointerdown.stop>+{{ row.nVersions }}</button></span>
             <div class="gallery-tile-name-row">
               <span v-if="row.t.isActive" class="gallery-tile-active-tag">{{ L.activeTag }}</span>
-              <div class="gallery-tile-name" :title="row.t.identifier"><span v-if="row.marker==='unread'" class="gallery-marker unread" :title="L.unread"></span>{{ row.t.stem }}</div>
+              <div class="gallery-tile-name" :title="row.t.identifier"><span v-if="row.marker==='unread'" class="gallery-marker unread" :title="L.unread"></span><span v-if="row.t.starred" class="gallery-tile-star" :title="L.starredMark" v-html="ICON.star"></span>{{ row.t.stem }}</div>
               <div v-if="row.sub" class="gallery-tile-sub" :title="row.sub">{{ row.sub }}</div>
               <div class="gallery-tile-meta">
                 <span v-if="row.t.encrypted" class="gallery-tile-state-icon enc" :title="L.encrypted" v-html="ICON.lock"></span>
+                <span v-if="row.t.unlocked" class="gallery-tile-state-icon editing" :title="L.unlockedMark" v-html="ICON.pencil"></span>
                 <span :class="'gallery-tile-state-icon b-' + row.t.badge" :title="row.t.badgeTitle" v-html="badgeIcon(row.t.badge)"></span>
                 <span>{{ fmtMeta(row.t) }}</span>
               </div>
@@ -100,6 +112,18 @@ export const GALLERY_TEMPLATE = `
                 <button type="button" @click="rename(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#rename"/></svg><span>{{ L.rename }}</span></button>
                 <button type="button" @click="move(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#move-to-folder"/></svg><span>{{ L.moveTo }}</span></button>
                 <button type="button" @click="copy(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#copy"/></svg><span>{{ L.copy }}</span></button>
+                <!-- 0.9.0 锁（库开了「作品默认只读」才有）：门上两个钮 + 锁上。不弹确认。 -->
+                <button v-if="row.t.lockable && !row.t.unlocked" type="button" @click="unlockAndOpen(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#pencil"/></svg><span>{{ L.editContinue }}</span></button>
+                <button v-if="row.t.lockable && !row.t.unlocked" type="button" @click="versionThenEdit(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#layers-stack"/></svg><span>{{ L.editVersionThen }}</span></button>
+                <button v-if="row.t.unlocked" type="button" @click="lockEdit(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#lock"/></svg><span>{{ L.editLock }}</span></button>
+                <!-- 0.9.0 存一版 = 复制一份（<主干>.backup-<今天>，生来收起、生来锁着）；有上一版才给「存到上一版」 -->
+                <button type="button" @click="saveVersion(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#layers-stack"/></svg><span>{{ L.saveVersion }}</span></button>
+                <button v-if="row.hasPrevVersion" type="button" @click="saveVersionReplace(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#layers-stack"/></svg><span>{{ L.saveVersionReplace }}</span></button>
+                <!-- 0.9.0 星 / 收起（库开了记号才有）。存下来的一版按名字天然收起，不给「收起」 -->
+                <button v-if="caps.marks && !row.t.starred" type="button" @click="star(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#star"/></svg><span>{{ L.star }}</span></button>
+                <button v-if="caps.marks && row.t.starred" type="button" @click="unstar(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#star"/></svg><span>{{ L.unstar }}</span></button>
+                <button v-if="caps.marks && !row.t.folded && !row.isVersion" type="button" @click="fold(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#archive-box"/></svg><span>{{ L.fold }}</span></button>
+                <button v-if="caps.marks && row.t.folded" type="button" @click="unfold(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#archive-box"/></svg><span>{{ L.unfold }}</span></button>
                 <button v-if="row.t.badge==='cloudOnly'" type="button" @click="openTile(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#download"/></svg><span>{{ L.pullLocal }}</span></button>
                 <button v-if="row.t.badge==='cloudOnly'" type="button" @click="keepOffline(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#local-cache"/></svg><span>{{ L.keepOffline }}</span></button>
                 <button v-if="row.t.badge==='localOnly' || row.t.badge==='float' || row.t.badge==='dirtyBoth' || row.t.badge==='conflictBoth'" type="button" @click="resolve(row.item)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cloud-pending"/></svg><span>{{ L.resolve }}</span></button>
